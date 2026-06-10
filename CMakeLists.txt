@@ -1,0 +1,150 @@
+# ==============================================================================
+# @Project:     Robotics Rendering Library (RRL)
+# @Author:      https://github.com/alanglk
+# @Date:        10/06/2026
+# @Description: CMake configuration for the Robotics Rendering Library (RRL) project.
+# @Version:     1.0.0
+# ==============================================================================
+
+cmake_minimum_required(VERSION 3.15)
+
+project(RRL 
+    VERSION 1.0.0 
+    DESCRIPTION "Robotics Rendering Library (RRL)"
+    HOMEPAGE_URL "https://github.com/alanglk/RRL"
+    LANGUAGES CXX
+)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+
+# --- Compilation out paths ---------------------------------------
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+
+# --- Building options --------------------------------------------
+option(RRL_SHARED   "Build RRL as a shared library" OFF )
+option(RRL_INSTALL  "Install RRL and related files" OFF )
+option(RRL_TESTING  "Build RRL tests" OFF )
+
+
+# --- Installation Variables --------------------------------------
+# Install tree inside the build dir by default <build>/dist
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/dist" CACHE PATH "Install path" FORCE)
+endif()
+set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+set(CMAKE_INSTALL_RPATH "$ORIGIN" "$ORIGIN/../lib")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
+set(CMAKE_SKIP_RPATH FALSE)
+set(CMAKE_MACOSX_RPATH FALSE)
+
+
+# --- Library Setup Variables -------------------------------------
+set(RRL_TYPE STATIC)                # STATIC or SHARED
+set(RRL_PUBLIC_LIBRARIES )          # Public RRL dependencies (entt, glm)
+set(RRL_PRIVATE_LIBRARIES )         # Private RRL dependencies (no deps for now)
+set(RRL_PUBLIC_COMPILE_DEFS )       # e.g. ENABLE_CUDA to compile CUDA RHI and tell lib linkers it is enabled
+set(RRL_PRIVATE_COMPILE_DEFS )      # e.g. ENABLE_TESTING compile definition to compile tests source sections
+
+if(RRL_SHARED)
+    set(RRL_TYPE SHARED)
+endif()
+
+
+# --- Enable Testing (Fetch GTest) --------------------------------
+if(RRL_TESTING)
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/5376968f6948923e2411081fd9372e71a59d8e77.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)            # To disable GMock building
+    set(GTEST_DONT_DEFINE_FOO 0 CACHE BOOL "" FORCE)    # To rename every GTest macro by adding the GTEST_* prefix
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)  # For Windows: Prevent overriding the parent project's compiler/linker settings
+    FetchContent_MakeAvailable(googletest)
+    
+    enable_testing()
+
+    list(APPEND RRL_PRIVATE_COMPILE_DEFS ENABLE_TESTING)
+endif()
+
+
+# --- Library Dependencies ----------------------------------------
+
+## EnTT: located in third_party/entt 
+set(ENTT_DIR "${CMAKE_SOURCE_DIR}/third_party/entt")
+if(EXISTS "${ENTT_DIR}/CMakeLists.txt")
+    set(ENTT_INSTALL OFF CACHE BOOL "" FORCE) # Prevents EnTT overrides on install variables
+    add_subdirectory(${ENTT_DIR})
+    list(APPEND RRL_PUBLIC_LIBRARIES EnTT::EnTT)
+else()
+    message(FATAL_ERROR "EnTT source missing at ${ENTT_DIR}. Have you called 'git submodule update --init'?")
+endif()
+
+## GLM: located in third_party/glm 
+set(GLM_DIR "${CMAKE_SOURCE_DIR}/third_party/glm")
+if(EXISTS "${GLM_DIR}/CMakeLists.txt")
+    set(GLM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${GLM_DIR})
+    list(APPEND RRL_PUBLIC_LIBRARIES glm::glm-header-only)
+else()
+    message(FATAL_ERROR "GLM source missing at ${GLM_DIR}")
+endif()
+
+
+# --- Library Sources ---------------------------------------------
+set(RRL_SOURCES
+    src/tf/TransformTree.cpp
+)
+
+
+# --- Library Target ----------------------------------------------
+add_library(rrl ${RRL_TYPE} ${RRL_SOURCES})
+set_target_properties(rrl PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(rrl 
+    PUBLIC 
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+)
+target_compile_definitions(rrl 
+    PUBLIC  ${RRL_PUBLIC_COMPILE_DEFS}
+    PRIVATE ${RRL_PRIVATE_COMPILE_DEFS}
+)
+target_link_libraries(rrl 
+    PUBLIC  ${RRL_PUBLIC_LIBRARIES}
+    PRIVATE ${RRL_PRIVATE_LIBRARIES}
+)
+
+
+# --- Test Executable Targets -------------------------------------
+if(RRL_TESTING)
+    # collect all test C++ source files in the test/ folder
+    file(GLOB_RECURSE RRL_TEST_SOURCES "test/*.cpp" "test/*.cc")
+    if(RRL_TEST_SOURCES)
+
+        foreach(test_file IN LISTS RRL_TEST_SOURCES)
+            file(RELATIVE_PATH rel_path ${CMAKE_CURRENT_SOURCE_DIR} ${test_file})
+            message(STATUS "Found test source file: ${rel_path}")
+        endforeach()
+
+        add_executable(rrl_tests ${RRL_TEST_SOURCES})
+        target_link_libraries(rrl_tests 
+            PRIVATE 
+                rrl 
+                GTest::gtest_main
+        )
+        
+        # Discover and add tests to ctest automatically
+        include(GoogleTest)
+        gtest_discover_tests(rrl_tests)
+    else()
+        message(WARNING "Testing is enabled, but no test source files were found in 'test/'.")
+    endif()
+endif()
