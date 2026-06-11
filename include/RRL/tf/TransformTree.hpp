@@ -52,22 +52,24 @@ void AddTransform(entt::registry& registry, entt::entity entity,
 void AddTransform(entt::registry& registry, entt::entity child_entity, entt::entity parent_entity,
                   const glm::vec3& position = {0.0f, 0.0f, 0.0f}, 
                   const glm::quat& rotation = {1.0f, 0.0f, 0.0f, 0.0f}, 
-                  const glm::vec3& scale = {1.0f, 1.0f, 1.0f});
+                  const glm::vec3& scale = {1.0f, 1.0f, 1.0f},
+                  TFDependencyPolicy policy = TFDependencyPolicy::CASCADE_DELETE
+                );
 
 /**
  * @brief Sets / updates an already added transform position
  */
-void SetPosition(entt::registry& registry, entt::entity entity, const glm::vec3& pos);
+void SetLocalPosition(entt::registry& registry, entt::entity entity, const glm::vec3& pos);
 
 /**
  * @brief Sets / updates an already added transform rotation
  */
-void SetRotation(entt::registry& registry, entt::entity entity, const glm::quat& rot);
+void SetLocalRotation(entt::registry& registry, entt::entity entity, const glm::quat& rot);
 
 /**
  * @brief Sets / updates an already added transform scale
  */
-void SetScale(entt::registry& registry, entt::entity entity, const glm::vec3& scale);
+void SetLocalScale(entt::registry& registry, entt::entity entity, const glm::vec3& scale);
 
 /**
  * @brief Gets the local transform position (ISO 8855 CS)

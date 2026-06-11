@@ -6,30 +6,15 @@
 
 #include <glm/gtx/matrix_decompose.hpp>
 
+#include <FLogging/FLogging.hpp>
+#include "RRL/DebugMacros.hpp"
+
+
 namespace rrl::tf {
     
 
 
 // --- TF Runtime --------------------------------------------------
-
-/**
- * @brief Helper to compute the absolute world matrix of a node. 
- * This is called from OnParentDestroy when the REPARENT_TO_WORLD policy is active on an specific child.
- * It is important to compute the world matrix of the child node before its parent gets deleted 
- * as we need to look up all its branched to get a reliable world transform.
- */
-glm::mat4 ComputeAbsoluteMatrix(entt::registry& reg, entt::entity node) {
-    glm::mat4 abs_matrix(1.0f);
-    entt::entity curr = node;
-    
-    // Walk up to the root, multiplying local matrices
-    while (curr != entt::null) {
-        const auto& local = reg.get<TFLocalTransformComponent>(curr);
-        abs_matrix = local.GetLocalMatrix() * abs_matrix; 
-        curr = reg.get<TFRelationshipComponent>(curr).parent;
-    }
-    return abs_matrix;
-}
 
 /**
  * @brief Helper function executed when a TFRelationshipComponent gets destroyed.
@@ -55,29 +40,34 @@ void OnParentDestroy(entt::registry& registry, entt::entity parent_entity) {
     // Manage children
     entt::entity current_child = parent_rel.first_child;
     while (current_child != entt::null) {
-        auto& child_rel = registry.get<TFRelationshipComponent>(current_child);
-        entt::entity next_sibling = child_rel.next_sibling; 
+        auto* child_rel = registry.try_get<TFRelationshipComponent>(current_child);
+        if (!child_rel) break;
+
+        entt::entity next_sibling = child_rel->next_sibling; 
+        TFDependencyPolicy policy = child_rel->dependency_policy;
 
         // Cascade deletion
-        if (child_rel.dependency_policy == TFDependencyPolicy::CASCADE_DELETE) {
+        if (policy == TFDependencyPolicy::CASCADE_DELETE) {
             registry.destroy(current_child);
         }
 
         // Reparent this node to WORLD
-        else if (child_rel.dependency_policy == TFDependencyPolicy::REPARENT_TO_WORLD) {
+        else if (policy == TFDependencyPolicy::REPARENT_TO_WORLD) {
 
-            glm::mat4 true_world_matrix = ComputeAbsoluteMatrix(registry, current_child);
-            if (registry.all_of<TFLocalTransformComponent>(current_child)) {
-                auto& local = registry.get<TFLocalTransformComponent>(current_child);
-                // This flags the LTF it so all its childs gets updated on the next UpdateTransformTree call
-                local.SetFromMatrix(true_world_matrix); 
+            // The parent is actively being destroyed from RAM, so climbing the tree is impossible.
+            // We MUST use the child's cached world matrix as the last known accurate state.
+            if (auto* world = registry.try_get<TFWorldTransformComponent>(current_child)) {
+                if (auto* local = registry.try_get<TFLocalTransformComponent>(current_child)) {
+                    // This sets is_dirty = true, flagging it for the next UpdateTransformTree call
+                    local->SetFromMatrix(world->matrix); 
+                }
             }
             
             // Now it becomes a root node
-            child_rel.parent = entt::null;
-            child_rel.prev_sibling = entt::null;
-            child_rel.next_sibling = entt::null;
-            child_rel.depth = 0;
+            child_rel->parent = entt::null;
+            child_rel->prev_sibling = entt::null;
+            child_rel->next_sibling = entt::null;
+            child_rel->depth = 0;
         }
 
         // Advance to the cached sibling
@@ -132,13 +122,13 @@ void UpdateTransformTree(entt::registry& registry) {
 
 // --- TF Adding / Updating / Getting ------------------------------
 
-
-
 /**
  * @brief Helper to mark all parents of this entity as having dirty children.
  * This guarantees the UpdateTransformTree traversal won't prune this branch.
  */
 void MarkPathDirty(entt::registry& registry, entt::entity entity) {
+    if (!registry.all_of<TFRelationshipComponent>(entity)) return;
+
     entt::entity curr = registry.get<TFRelationshipComponent>(entity).parent;
     while (curr != entt::null) {
         auto& rel = registry.get<TFRelationshipComponent>(curr);
@@ -151,61 +141,85 @@ void MarkPathDirty(entt::registry& registry, entt::entity entity) {
     }
 }
 
-/**
- * @brief Adds the necessary Transform and Relationship components to an entity.
- */
 void AddTransform(entt::registry& registry, entt::entity entity, 
                   const glm::vec3& position,
                   const glm::quat& rotation,
                   const glm::vec3& scale ) {
-    TFRelationshipComponent rel_tf;
+
+    if (registry.all_of<TFLocalTransformComponent>(entity)) {
+        LOG_ERROR("Entity {} already has a transform. Cannot add multiple transforms.", static_cast<uint32_t>(entity));
+        return;
+    }
+
     TFLocalTransformComponent local_tf;
-    TFWorldTransformComponent world_tf;
+    local_tf.SetPosition(position);
+    local_tf.SetRotation(rotation);
+    local_tf.SetScale(scale);
 
-
+    registry.emplace<TFLocalTransformComponent>(entity, local_tf);
+    registry.emplace<TFWorldTransformComponent>(entity);
+    registry.emplace<TFRelationshipComponent>(entity);
 }
 
 void AddTransform(entt::registry& registry, entt::entity child_entity, entt::entity parent_entity,
                   const glm::vec3& position,
                   const glm::quat& rotation,
-                  const glm::vec3& scale ) {
+                  const glm::vec3& scale,
+                  TFDependencyPolicy policy ) {
 
+    AddTransform(registry, child_entity, position, rotation, scale);
+    AttachChild(registry, parent_entity, child_entity, policy);
 }
 
 
-void SetPosition(entt::registry& registry, entt::entity entity, const glm::vec3& pos) {
+void SetLocalPosition(entt::registry& registry, entt::entity entity, const glm::vec3& pos) {
+    RRL_ASSERT_HAS_COMPONENT(registry, entity, TFLocalTransformComponent, "Entity lacks a transform!");
+
     registry.get<TFLocalTransformComponent>(entity).SetPosition(pos);
     MarkPathDirty(registry, entity);
 }
-void SetRotation(entt::registry& registry, entt::entity entity, const glm::quat& rot) {
+void SetLocalRotation(entt::registry& registry, entt::entity entity, const glm::quat& rot) {
+    RRL_ASSERT_HAS_COMPONENT(registry, entity, TFLocalTransformComponent, "Entity lacks a transform!");
+
     registry.get<TFLocalTransformComponent>(entity).SetRotation(rot);
     MarkPathDirty(registry, entity);
 }
-void SetScale(entt::registry& registry, entt::entity entity, const glm::vec3& scale) {
+void SetLocalScale(entt::registry& registry, entt::entity entity, const glm::vec3& scale) {
+    RRL_ASSERT_HAS_COMPONENT(registry, entity, TFLocalTransformComponent, "Entity lacks a transform!");
+
     registry.get<TFLocalTransformComponent>(entity).SetScale(scale);
     MarkPathDirty(registry, entity);
 }
 
 glm::vec3 GetLocalPosition(entt::registry& registry, entt::entity entity) {
+    RRL_ASSERT_HAS_COMPONENT(registry, entity, TFLocalTransformComponent, "Entity lacks a transform!");
+
     return registry.get<TFLocalTransformComponent>(entity).GetPosition();
 }
 glm::quat GetLocalRotation(entt::registry& registry, entt::entity entity) {
-    return registry.get<TFLocalTransformComponent>(entity).GetPosition();
+    RRL_ASSERT_HAS_COMPONENT(registry, entity, TFLocalTransformComponent, "Entity lacks a transform!");
+
+    return registry.get<TFLocalTransformComponent>(entity).GetRotation();
 }
 glm::vec3 GetLocalScale(entt::registry& registry, entt::entity entity) {
+    RRL_ASSERT_HAS_COMPONENT(registry, entity, TFLocalTransformComponent, "Entity lacks a transform!");
+
     return registry.get<TFLocalTransformComponent>(entity).GetScale();
 }
 const glm::mat4& GetWorldMatrix(entt::registry& registry, entt::entity entity) {
+    RRL_ASSERT_HAS_COMPONENT(registry, entity, TFWorldTransformComponent, "Entity lacks a transform!");
+
     return registry.get<TFWorldTransformComponent>(entity).matrix;
 }
 
 
 
 // --- TF Hierarchy ------------------------------------------------
-/**
- * @brief Attaches a child to a parent with a specific dependency policy.
- */
 void AttachChild(entt::registry& registry, entt::entity parent, entt::entity child, TFDependencyPolicy policy) {
+    if (!registry.all_of<TFRelationshipComponent>(parent) || !registry.all_of<TFRelationshipComponent>(child)) {
+        LOG_ERROR("AttachChild failed. Both parent {} and child {} must have transforms.", static_cast<uint32_t>(parent), static_cast<uint32_t>(child));
+        return;
+    }
     auto& parent_rel = registry.get<TFRelationshipComponent>(parent);
     auto& child_rel = registry.get<TFRelationshipComponent>(child);
 
@@ -226,29 +240,64 @@ void AttachChild(entt::registry& registry, entt::entity parent, entt::entity chi
     MarkPathDirty(registry, child);
 }
 
+
 /**
- * @brief Detaches a child from its parent, making it a root node in the World Coordinate System.
+ * @brief Helper to compute the absolute world matrix of a node. 
+ * This is called from OnParentDestroy when the REPARENT_TO_WORLD policy is active on an specific child.
+ * It is important to compute the world matrix of the child node before its parent gets deleted 
+ * as we need to look up all its branched to get a reliable world transform.
  */
-void DetachChild(entt::registry& registry, entt::entity child);
+glm::mat4 ComputeAbsoluteMatrix(entt::registry& reg, entt::entity node) {
+    glm::mat4 abs_matrix(1.0f);
+    entt::entity curr = node;
+    
+    // Walk up to the root, multiplying local matrices
+    while (curr != entt::null) {
+        RRL_ASSERT_HAS_COMPONENT(reg, node, TFLocalTransformComponent, "Entity lacks a transform!");
+        const auto& local = reg.get<TFLocalTransformComponent>(curr);
+        abs_matrix = local.GetLocalMatrix() * abs_matrix; 
+        curr = reg.get<TFRelationshipComponent>(curr).parent;
+    }
+    return abs_matrix;
+}
+void DetachChild(entt::registry& registry, entt::entity child) {
+    if (!registry.all_of<TFRelationshipComponent>(child)) {
+        LOG_ERROR("DetachChild failed. Entity {} lacks a relationship component.", static_cast<uint32_t>(child));
+        return;
+    }
 
+    auto& child_rel = registry.get<TFRelationshipComponent>(child);
+    if (child_rel.parent == entt::null) {
+        LOG_WARN("Entity {} is already a root node. Nothing to detach.", static_cast<uint32_t>(child));
+        return;
+    }
 
+    // Unlink from siblings and parent
+    if (child_rel.prev_sibling != entt::null) {
+        registry.get<TFRelationshipComponent>(child_rel.prev_sibling).next_sibling = child_rel.next_sibling;
+    } else if (child_rel.parent != entt::null) {
+        registry.get<TFRelationshipComponent>(child_rel.parent).first_child = child_rel.next_sibling;
+    }
+    if (child_rel.next_sibling != entt::null) {
+        registry.get<TFRelationshipComponent>(child_rel.next_sibling).prev_sibling = child_rel.prev_sibling;
+    }
 
+    // Convert current absolute coordinates to be its new root-level coordinates
+    glm::mat4 true_world_matrix = ComputeAbsoluteMatrix(registry, child);
+    if (registry.all_of<TFLocalTransformComponent>(child)) {
+        registry.get<TFLocalTransformComponent>(child).SetFromMatrix(true_world_matrix);
+    }
 
-
-
-// --- Safe Transform Setters ---
-
-inline void SetLocalPosition(entt::registry& registry, entt::entity entity, const glm::vec3& pos) {
+    // Clear relationships
+    child_rel.parent = entt::null;
+    child_rel.prev_sibling = entt::null;
+    child_rel.next_sibling = entt::null;
+    child_rel.depth = 0;
+    
+    MarkPathDirty(registry, child);
 }
 
-inline void SetLocalRotation(entt::registry& registry, entt::entity entity, const glm::quat& rot) {
-    registry.get<TFLocalTransformComponent>(entity).SetRotation(rot);
-    MarkPathDirty(registry, entity);
-}
-
-// --- Safe Hierarchy Management ---
-
-
 
 
 }
+
