@@ -19,23 +19,33 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 
+set(RRL_IS_MASTER_PROJECT OFF)
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    set(RRL_IS_MASTER_PROJECT ON)
+endif()
+
+
 # --- Compilation out paths ---------------------------------------
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+if(RRL_IS_MASTER_PROJECT)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/bin)
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib)
+endif()
 
 
 # --- Building options --------------------------------------------
 option(RRL_SHARED   "Build RRL as a shared library" OFF )
-option(RRL_INSTALL  "Install RRL and related files" OFF )
 option(RRL_TESTING  "Build RRL tests" OFF )
 
 
 # --- Installation Variables --------------------------------------
-# Install tree inside the build dir by default <build>/dist
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/dist" CACHE PATH "Install path" FORCE)
+if(RRL_IS_MASTER_PROJECT)
+    # Install tree inside the build dir by default <build>/dist
+    if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+      set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/dist" CACHE PATH "Install path" FORCE)
+    endif()
 endif()
+
 set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 set(CMAKE_INSTALL_RPATH "$ORIGIN" "$ORIGIN/../lib")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
@@ -77,38 +87,69 @@ endif()
 # --- Library Dependencies ----------------------------------------
 
 ## EnTT: located in third_party/entt 
-set(ENTT_DIR "${CMAKE_SOURCE_DIR}/third_party/entt")
+set(ENTT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/entt")
 if(EXISTS "${ENTT_DIR}/CMakeLists.txt")
     set(ENTT_INSTALL OFF CACHE BOOL "" FORCE) # Prevents EnTT overrides on install variables
-    add_subdirectory(${ENTT_DIR})
-    list(APPEND RRL_PUBLIC_LIBRARIES EnTT::EnTT)
+    add_subdirectory(${ENTT_DIR} "${CMAKE_CURRENT_BINARY_DIR}/entt" EXCLUDE_FROM_ALL)
+    list(APPEND RRL_PUBLIC_LIBRARIES $<BUILD_INTERFACE:EnTT::EnTT> )
 else()
-    message(FATAL_ERROR "EnTT source missing at ${ENTT_DIR}. Have you called 'git submodule update --init'?")
+    message(FATAL_ERROR "EnTT source missing at ${ENTT_DIR}. Have you called 'git submodule update --init --recursive'?")
 endif()
 
 ## GLM: located in third_party/glm 
-set(GLM_DIR "${CMAKE_SOURCE_DIR}/third_party/glm")
+set(GLM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glm")
 if(EXISTS "${GLM_DIR}/CMakeLists.txt")
     set(GLM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${GLM_DIR})
-    list(APPEND RRL_PUBLIC_LIBRARIES glm::glm-header-only)
+    add_subdirectory(${GLM_DIR} "${CMAKE_CURRENT_BINARY_DIR}/glm" EXCLUDE_FROM_ALL)
+    list(APPEND RRL_PUBLIC_LIBRARIES $<BUILD_INTERFACE:glm::glm-header-only> )
+    list(APPEND RRL_PRIVATE_COMPILE_DEFS GLM_ENABLE_EXPERIMENTAL)
 else()
-    message(FATAL_ERROR "GLM source missing at ${GLM_DIR}")
+    message(FATAL_ERROR "GLM source missing at ${GLM_DIR}. Have you called 'git submodule update --init --recursive'?")
+endif()
+
+## FLogging: located in third_party/FLogging 
+set(FL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/FLogging")
+if(EXISTS "${FL_DIR}/CMakeLists.txt")
+    if (RRL_TYPE STREQUAL "SHARED")
+        set(FLOGGING_SHARED ON CACHE BOOL "Force FLogging as SHARED" FORCE)
+    endif()
+    set(FLOGGING_F_PREFIX OFF CACHE BOOL "Disable F_ prefix for parent project" FORCE)
+    set(FLOGGING_QUILL_BACKEND ON CACHE BOOL "Force Quill backend for FLogging" FORCE)
+    add_subdirectory(${FL_DIR} "${CMAKE_CURRENT_BINARY_DIR}/FLogging" EXCLUDE_FROM_ALL)
+    list(APPEND RRL_PUBLIC_LIBRARIES FLogging::flogging)
+else()
+    message(FATAL_ERROR "FLogging source missing at ${FL_DIR}. Have you called 'git submodule update --init --recursive'?")
 endif()
 
 
 # --- Library Sources ---------------------------------------------
 set(RRL_SOURCES
     src/tf/TransformTree.cpp
+    src/tf/TFComponents.cpp
 )
 
 
 # --- Library Target ----------------------------------------------
 add_library(rrl ${RRL_TYPE} ${RRL_SOURCES})
 set_target_properties(rrl PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+if(RRL_SHARED)
+    set_target_properties(rrl PROPERTIES 
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+    )
+endif()
+
+include(GenerateExportHeader)
+generate_export_header(rrl
+    EXPORT_MACRO_NAME RRL_API
+    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/include/RRL/rrl_export.h"
+)
+
 target_include_directories(rrl 
     PUBLIC 
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/include
@@ -121,6 +162,7 @@ target_link_libraries(rrl
     PUBLIC  ${RRL_PUBLIC_LIBRARIES}
     PRIVATE ${RRL_PRIVATE_LIBRARIES}
 )
+add_library(RRL::rrl ALIAS rrl)
 
 
 # --- Test Executable Targets -------------------------------------
@@ -148,3 +190,43 @@ if(RRL_TESTING)
         message(WARNING "Testing is enabled, but no test source files were found in 'test/'.")
     endif()
 endif()
+
+
+# --- Install -----------------------------------------------------
+install(
+  TARGETS rrl
+  EXPORT RRLTargets
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  INCLUDES DESTINATION include
+)
+
+install(
+  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+  DESTINATION include
+)
+install(
+  DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/
+  DESTINATION include
+)
+
+# Export CMake targets
+install(
+  EXPORT RRLTargets 
+  FILE  RRLTargets.cmake
+  NAMESPACE  RRL::
+  DESTINATION lib/cmake/RRL
+)
+
+# Generate Config file
+include(CMakePackageConfigHelpers)
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/RRLConfig.cmake "
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+include(\"\${CMAKE_CURRENT_LIST_DIR}/RRLTargets.cmake\")
+")
+install(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/RRLConfig.cmake
+    DESTINATION lib/cmake/RRL
+)
