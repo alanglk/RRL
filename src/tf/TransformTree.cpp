@@ -2,7 +2,6 @@
 
 #include "RRL/tf/TransformTree.hpp"
 #include "RRL/tf/TFComponents.hpp"
-#include "entt/entity/fwd.hpp"
 
 #include <glm/gtx/matrix_decompose.hpp>
 
@@ -92,7 +91,8 @@ void UpdateNode(entt::registry& registry, entt::entity entity, const glm::mat4& 
     bool matrix_changed = parent_changed || local.IsDirty(); 
     if (matrix_changed) {
         world.matrix = parent_matrix * local.GetLocalMatrix();
-        local.ClearDirty(); // Reset the flag
+        world.version++;        // Update TF version
+        local.ClearDirty();     // Reset the flag
     }
 
     // Only traverse down if this matrix changed or a deeper child moved

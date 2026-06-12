@@ -126,6 +126,7 @@ endif()
 set(RRL_SOURCES
     src/tf/TransformTree.cpp
     src/tf/TFComponents.cpp
+    src/camera/CameraSystem.cpp
 )
 
 

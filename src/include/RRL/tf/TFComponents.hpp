@@ -24,6 +24,7 @@ struct TFRelationshipComponent {
  */
 struct TFWorldTransformComponent {
     glm::mat4 matrix{1.0f}; // Identity matrix
+    uint32_t version { 0 }; // Transform versioning (used to know if the tf has been updated)
 };
 
 

@@ -19,12 +19,20 @@
             LOG_ERROR(msg); \
             std::abort(); \
         }
+    /**
+     * @brief Assert an entity does not have a certain component
+     */
+    #define RRL_ASSERT_NOT_HAS_COMPONENT(reg, ent, comp_type, msg) \
+        if (reg.all_of<comp_type>(ent)) { \
+            LOG_ERROR(msg); \
+            std::abort(); \
+        }
 
 
 #else
 
-
     #define RRL_ASSERT_HAS_COMPONENT(reg, ent, comp_type, msg) ((void)0)
+    #define RRL_ASSERT_NOT_HAS_COMPONENT(reg, ent, comp_type, msg) ((void)0)
 
 
 #endif
