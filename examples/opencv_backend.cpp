@@ -82,7 +82,7 @@ int main() {
     // Configure and mount the Camera Component as the Primary Screen Output
     camera::PerspectiveModel camera_model;
     camera_model.fov_y_radians = glm::radians(60.0f);
-    camera_model.aspect_ratio = 1024.0f / 768.0f;
+    camera_model.aspect_ratio = float(config.width) / float(config.height);
     camera_model.z_near = 0.1f;
     camera_model.z_far = 100.0f;
 
