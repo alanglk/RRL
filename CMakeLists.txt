@@ -36,6 +36,8 @@ endif()
 # --- Building options --------------------------------------------
 option(RRL_SHARED   "Build RRL as a shared library" OFF )
 option(RRL_TESTING  "Build RRL tests" OFF )
+option(RRL_EXAMPLES "Build RRL examples" OFF)
+option(RRL_BUILD_BACKEND_OPENCV "Build the OpenCV Rasterizer RHI Backend" ON)
 
 
 # --- Installation Variables --------------------------------------
@@ -63,6 +65,17 @@ set(RRL_PRIVATE_COMPILE_DEFS )      # e.g. ENABLE_TESTING compile definition to 
 if(RRL_SHARED)
     set(RRL_TYPE SHARED)
 endif()
+
+
+# --- Library Sources ---------------------------------------------
+set(RRL_SOURCES
+    src/tf/TransformTree.cpp
+    src/tf/TFComponents.cpp
+    src/camera/CameraSystem.cpp
+    src/io/ImageIO.cpp
+    src/rhi/RHIAPI.cpp
+)
+
 
 
 # --- Enable Testing (Fetch GTest) --------------------------------
@@ -121,13 +134,22 @@ else()
     message(FATAL_ERROR "FLogging source missing at ${FL_DIR}. Have you called 'git submodule update --init --recursive'?")
 endif()
 
-
-# --- Library Sources ---------------------------------------------
-set(RRL_SOURCES
-    src/tf/TransformTree.cpp
-    src/tf/TFComponents.cpp
-    src/camera/CameraSystem.cpp
-)
+## OpenCV RHI Backend
+if(RRL_BUILD_BACKEND_OPENCV)
+    find_package(OpenCV QUIET)
+    if(OpenCV_FOUND)
+        message(STATUS "RRL: OpenCV found. Enabling OpenCV RHI backend.")
+        list(APPEND RRL_PRIVATE_LIBRARIES ${OpenCV_LIBS})
+        list(APPEND RRL_PRIVATE_INCLUDE_DIRS ${OpenCV_INCLUDE_DIRS})
+        list(APPEND RRL_PUBLIC_COMPILE_DEFS RRL_RHI_OPENCV)
+        list(APPEND RRL_SOURCES 
+            src/rhi/opencv/OpenCVRenderer.cpp
+        )
+    else()
+        message(WARNING "RRL: OpenCV not found! Disabling the OpenCV RHI backend despite RRL_BUILD_BACKEND_OPENCV being ON.")
+        set(RRL_BUILD_BACKEND_OPENCV OFF CACHE BOOL "Build the OpenCV Rasterizer RHI Backend" FORCE)
+    endif()
+endif()
 
 
 # --- Library Target ----------------------------------------------
@@ -154,6 +176,7 @@ target_include_directories(rrl
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb
 )
 target_compile_definitions(rrl 
     PUBLIC  ${RRL_PUBLIC_COMPILE_DEFS}
@@ -189,6 +212,29 @@ if(RRL_TESTING)
         gtest_discover_tests(rrl_tests)
     else()
         message(WARNING "Testing is enabled, but no test source files were found in 'test/'.")
+    endif()
+endif()
+
+# --- Examples ----------------------------------------------------
+if(RRL_EXAMPLES)
+    # Collect all example C++ source files in the examples/ folder
+    file(GLOB_RECURSE RRL_EXAMPLE_SOURCES "examples/*.cpp" "examples/*.cc")
+    if(RRL_EXAMPLE_SOURCES)
+
+        foreach(example_file IN LISTS RRL_EXAMPLE_SOURCES)
+            file(RELATIVE_PATH rel_path ${CMAKE_CURRENT_SOURCE_DIR} ${example_file})
+            message(STATUS "Found example source file: ${rel_path}")
+            get_filename_component(example_name ${example_file} NAME_WE)
+            set(target_name "ex_${example_name}")
+            add_executable(${target_name} ${example_file})
+            target_link_libraries(${target_name} 
+                PRIVATE 
+                    rrl 
+            )
+        endforeach()
+
+    else()
+        message(WARNING "Examples building is enabled, but no example source files were found in 'examples/'.")
     endif()
 endif()
 
@@ -231,3 +277,5 @@ install(
     FILES ${CMAKE_CURRENT_BINARY_DIR}/RRLConfig.cmake
     DESTINATION lib/cmake/RRL
 )
+
+

@@ -14,7 +14,8 @@
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
-        "CMAKE_C_COMPILER_LAUNCHER": "ccache"
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "RRL_BUILD_BACKEND_OPENCV": "ON"
       }
     },
     {
@@ -25,6 +26,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "RRL_TESTING": "ON",
+        "RRL_EXAMPLES": "ON",
         "RRL_SHARED": "OFF"
       }
     },
@@ -36,6 +38,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "RRL_TESTING": "ON",
+        "RRL_EXAMPLES": "ON",
         "RRL_SHARED": "OFF"
       }
     },
@@ -47,6 +50,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "RRL_TESTING": "OFF",
+        "RRL_EXAMPLES": "OFF",
         "RRL_SHARED": "ON",
         "RRL_INSTALL": "ON"
       }

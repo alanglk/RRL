@@ -2,6 +2,7 @@
 
 #include "RRL/camera/CameraSystem.hpp"
 #include "RRL/camera/CameraComponents.hpp"
+#include "RRL/rhi/RHIBackend.hpp"
 #include "RRL/tf/TFComponents.hpp"
 
 #include <FLogging/FLogging.hpp>
@@ -13,11 +14,18 @@ namespace rrl::camera {
     
 
 // Matrix to map ISO 8855 (X-front, Y-left, Z-up) 
-//  to OpenCV CCS (X-right, Y-down, Z-front)
+// //  to OpenCV CCS (X-right, Y-down, Z-front)
+// constexpr glm::mat4 LCS_TO_CCS = glm::mat4(
+//     0.0f,  0.0f,  1.0f,  0.0f,
+//    -1.0f,  0.0f,  0.0f,  0.0f,
+//     0.0f, -1.0f,  0.0f,  0.0f,
+//     0.0f,  0.0f,  0.0f,  1.0f
+// );
+// to standard OpenGL View Space (X-right, Y-up, Z-backward)
 constexpr glm::mat4 LCS_TO_CCS = glm::mat4(
-    0.0f,  0.0f,  1.0f,  0.0f,
-   -1.0f,  0.0f,  0.0f,  0.0f,
-    0.0f, -1.0f,  0.0f,  0.0f,
+    0.0f,  0.0f, -1.0f,  0.0f, 
+   -1.0f,  0.0f,  0.0f,  0.0f, 
+    0.0f,  1.0f,  0.0f,  0.0f, 
     0.0f,  0.0f,  0.0f,  1.0f
 );
 
@@ -115,19 +123,23 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
 
 
 // --- Lifecycle ---------------------------------------------------
-void AddCamera(entt::registry& registry, entt::entity entity, const CameraModelVariant& model, bool is_primary) {
+void AddCamera(entt::registry& registry, entt::entity entity, const CameraModelVariant& model, rhi::RenderTargetHandle target_fbo) {
     RRL_ASSERT_NOT_HAS_COMPONENT(registry, entity, CameraComponent, "AddCamera failed: Entity already has a CameraComponent!");
 
-    // If this is set to primary, ensure no other camera holds the primary flag
-    if (is_primary) {
-        auto view = registry.view<CameraComponent>();
-        for (auto e : view) {
-            view.get<CameraComponent>(e).is_primary = false;
+    // Ensure no other camera points to the same target_fbo (ignoring TARGET_NULL)
+    auto view = registry.view<CameraComponent>();
+    for (auto e : view) {
+        auto& cam = view.get<CameraComponent>(e);
+        if (cam.target_fbo == rhi::TARGET_NULL) continue;
+        
+        // Null other camera FBO (it stops rendering)
+        if (cam.target_fbo == target_fbo) {
+            cam.target_fbo = rhi::TARGET_NULL;  
         }
     }
 
     // intrinsic_dirty is true by default in the struct.
-    registry.emplace<CameraComponent>(entity, model, is_primary, true);
+    registry.emplace<CameraComponent>(entity, model, target_fbo, true);
 }
 
 void RemoveCamera(entt::registry& registry, entt::entity entity) {
@@ -152,12 +164,20 @@ void SetCameraModel(entt::registry& registry, entt::entity entity, const CameraM
     cam.intrinsic_dirty = true; // Triggers the projection rebuild on the next tick
 }
 void SetPrimaryCamera(entt::registry& registry, entt::entity entity) {
-    RRL_ASSERT_HAS_COMPONENT(registry, entity, CameraComponent, "SetPrimaryCamera failed: Entity lacks a CameraComponent!");
+    SetCameraTarget(registry, entity, rhi::TARGET_MAIN);
+}
+void SetCameraTarget(entt::registry& registry, entt::entity entity, rhi::RenderTargetHandle target_fbo) {
+    RRL_ASSERT_HAS_COMPONENT(registry, entity, CameraComponent, "SetCameraTarget failed: Entity lacks a CameraComponent!");
     
+    // Ensure no other camera points to the same target_fbo (ignoring TARGET_NULL)
     auto view = registry.view<CameraComponent>();
     for (auto e : view) {
-        // Only evaluates to true if the current entity matches the target entity
-        view.get<CameraComponent>(e).is_primary = (e == entity);
+        auto& cam = view.get<CameraComponent>(e);
+        if (e == entity) {
+            cam.target_fbo = target_fbo;        // Set the target entity to draw to the screen
+        } else if (cam.target_fbo == target_fbo) {
+            cam.target_fbo = rhi::TARGET_NULL;  // If any other camera was drawing to the same target, strip its target
+        }
     }
 }
 
@@ -171,7 +191,7 @@ CameraModelVariant GetCameraModel(entt::registry& registry, entt::entity entity)
 entt::entity GetPrimaryCamera(entt::registry& registry) {
     auto view = registry.view<CameraComponent>();
     for (auto entity : view) {
-        if (view.get<CameraComponent>(entity).is_primary) {
+        if (view.get<CameraComponent>(entity).target_fbo == rhi::TARGET_MAIN) {
             return entity;
         }
     }

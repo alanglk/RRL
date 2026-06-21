@@ -1,0 +1,70 @@
+// RRL/include/rhi/RHIBackend.hpp
+#pragma once
+
+#include <entt/entt.hpp>
+
+#include "RRL/data/ImageData.hpp"
+#include "entt/entity/fwd.hpp"
+
+#include <cstdint>
+#include <string>
+
+
+namespace rrl::rhi {
+
+// RHI rendering target ID (enable off-screen rendering support)
+using RenderTargetHandle = uint32_t;
+constexpr RenderTargetHandle TARGET_MAIN = 0;           // Handle 0 is reserved for the Screen / Main Texture
+constexpr RenderTargetHandle TARGET_NULL = 0xFFFFFFFF;  // Null handle
+
+
+/**
+ * @brief Types of rendering backends.
+ */
+enum class RHIBackendType : uint8_t {
+    NONE = 0,
+    OPENCV = 1      // Use OpenCV for rendering
+};
+
+/**
+ * @brief Defines the rendering mode of the RHI
+ */
+enum class RHIRenderingMode : uint8_t {
+    WINDOW = 0,     // Opens an OS window (cv::imshow, GLFW)
+    HEADLESS = 1    // Pure background rendering 
+};
+
+/**
+ * @brief Defines how the RHI context is created.
+ */
+struct RHIConfig {
+    uint32_t width { 800 };
+    uint32_t height { 600 };
+    std::string title { "RRL Context" };
+    RHIRenderingMode mode { RHIRenderingMode::WINDOW };
+};
+
+/**
+ * @brief Dispatch table for rendering backends.
+ */
+struct RHIBackend {
+    RHIBackendType type {RHIBackendType::NONE};
+    
+    // Function pointers (defined for each backend type)
+    
+    // Lifecycle
+    bool (*Initialize)(entt::registry& registry, const RHIConfig& config) { nullptr };
+    void (*Shutdown)(entt::registry& registry) { nullptr };
+    void (*RenderFrame)(entt::registry& registry) { nullptr };
+    
+    // Target FBOs
+    RenderTargetHandle (*CreateRenderTarget)(entt::registry& registry, uint32_t width, uint32_t height) { nullptr };
+    void (*DestroyRenderTarget)(entt::registry& registry, RenderTargetHandle handle) { nullptr };
+
+    // Reads rendered data from the RHI back to CPU RAM
+    data::ImageData (*GetTargetImage)(entt::registry& registry, RenderTargetHandle handle) { nullptr };
+};
+
+
+} // namespace rrl::rhi 
+

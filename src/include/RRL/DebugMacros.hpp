@@ -11,6 +11,16 @@
 #ifndef NDEBUG
 #include <FLogging/FLogging.hpp>
 
+
+    /**
+     * @brief Assert a condition is true
+     */
+    #define RRL_ASSERT(condition, msg) \
+        if (!(condition)) { \
+            LOG_ERROR(msg); \
+            std::abort(); \
+        }
+
     /**
      * @brief Assert an entity has a certain component
      */
@@ -28,9 +38,9 @@
             std::abort(); \
         }
 
-
 #else
 
+    #define RRL_ASSERT(condition, msg) ((void)0)
     #define RRL_ASSERT_HAS_COMPONENT(reg, ent, comp_type, msg) ((void)0)
     #define RRL_ASSERT_NOT_HAS_COMPONENT(reg, ent, comp_type, msg) ((void)0)
 

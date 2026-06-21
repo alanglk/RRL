@@ -3,8 +3,10 @@
 
 #include "RRL/camera/CameraModels.hpp"
 #include "RRL/camera/CameraConventions.hpp"
+#include "RRL/rhi/RHIBackend.hpp"
 
 #include <entt/entt.hpp>
+
 
 namespace rrl::camera {
     
@@ -20,10 +22,12 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target);
 // --- Lifecycle ---------------------------------------------------
 /**
  * @brief Adds a camera component to an entity.
+ * If the target_fbo is set to TARGET_NULL, the camera will be ignoned at the rendering phase.
+ * If the target_fbo points to the same target as other camera, the other camera will point to TARGET_NULL.
  */
 void AddCamera(entt::registry& registry, entt::entity entity, 
                const CameraModelVariant& model = PerspectiveModel{}, 
-               bool is_primary = false);
+               rhi::RenderTargetHandle target_fbo = rhi::TARGET_MAIN);
 
 /**
  * @brief Removes the camera from an entity.
@@ -38,11 +42,17 @@ void RemoveCamera(entt::registry& registry, entt::entity entity);
  */
 void SetCameraModel(entt::registry& registry, entt::entity entity, const CameraModelVariant& model);
 
+/**
+ * @brief Sets the rendering fbo target for the given entity camera. 
+ * If the target_fbo points to the same target as other camera, the other camera will point to TARGET_NULL.
+ */
+void SetCameraTarget(entt::registry& registry, entt::entity entity, rhi::RenderTargetHandle target_fbo);
 
 /**
  * @brief Sets the given entity as the primary camera, unsetting any other primary cameras.
  */
 void SetPrimaryCamera(entt::registry& registry, entt::entity entity);
+
 
 
 

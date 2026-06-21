@@ -4,6 +4,9 @@
 #include "RRL/camera/CameraConventions.hpp"
 #include "RRL/camera/CameraModels.hpp"
 
+#include "RRL/rhi/RHIBackend.hpp"
+
+
 namespace rrl::camera {
     
 
@@ -15,8 +18,8 @@ struct CameraComponent {
     CameraModelVariant model { PerspectiveModel{} };
 
     // Flag to tell the RHI which camera should render onto the main screen buffer. 
-    // There must be just one active primary camera at any time.
-    bool is_primary { true };  
+    // THere can only be just one camera with its target pointing to  rhi::TARGET_SCREEN at a time
+    rhi::RenderTargetHandle target_fbo {rhi::TARGET_MAIN};
     
     // Flag to know if the camera intrinsics have changed 
     bool intrinsic_dirty { true };
