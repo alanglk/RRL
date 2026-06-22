@@ -14,8 +14,16 @@ namespace rrl::rhi {
 
 // RHI rendering target ID (enable off-screen rendering support)
 using RenderTargetHandle = uint32_t;
-constexpr RenderTargetHandle TARGET_MAIN = 0;           // Handle 0 is reserved for the Screen / Main Texture
+constexpr RenderTargetHandle TARGET_MAIN = 0;           // Handle 0 is reserved for the Screen / Main Target
 constexpr RenderTargetHandle TARGET_NULL = 0xFFFFFFFF;  // Null handle
+
+// RHI texture handling (loaded/allocated textures)
+using TextureHandle = uint32_t;
+constexpr TextureHandle TEXTURE_NULL = 0xFFFFFFFF;  // Null handle
+
+// RHI texture handling (loaded/allocated textures)
+using MeshHandle = uint32_t;
+constexpr MeshHandle MESH_NULL = 0xFFFFFFFF;  // Null handle
 
 
 /**
@@ -60,6 +68,11 @@ struct RHIBackend {
     // Target FBOs
     RenderTargetHandle (*CreateRenderTarget)(entt::registry& registry, uint32_t width, uint32_t height) { nullptr };
     void (*DestroyRenderTarget)(entt::registry& registry, RenderTargetHandle handle) { nullptr };
+
+    // Textures
+    TextureHandle (*CreateTexture)(entt::registry& registry, const data::ImageData& image_data) { nullptr };
+    void (*UpdateTexture)(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) { nullptr };
+    void (*DestroyTexture)(entt::registry& registry, TextureHandle handle) { nullptr };
 
     // Reads rendered data from the RHI back to CPU RAM
     data::ImageData (*GetTargetImage)(entt::registry& registry, RenderTargetHandle handle) { nullptr };

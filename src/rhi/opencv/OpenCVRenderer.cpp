@@ -1,17 +1,21 @@
 // RRL/src/rhi/opencv/OpenCVRenderer.cpp
 
-#include "RRL/camera/CameraComponents.hpp"
 #ifndef  RRL_RHI_OPENCV
     #error "OpenCVRenderer.hpp file must be compiled with OpenCV support."
 #endif
 
+#include "RRL/camera/CameraComponents.hpp"
 #include "RRL/tf/TFComponents.hpp"
-#include "RRL/data/MeshData.hpp"
+#include "RRL/data/MeshComponents.hpp"
+#include "RRL/data/TextureComponents.hpp"
 
 #include "RRL/rhi/RHIBackend.hpp"
+
+
 #include <opencv2/core/mat.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
+
 
 #include <unordered_map>
 
@@ -25,7 +29,9 @@ namespace rrl::rhi::opencv {
 struct OpenCVContext {
     RHIConfig config;
     std::unordered_map<RenderTargetHandle, cv::Mat> render_targets;
+    std::unordered_map<TextureHandle, cv::Mat> textures;
     RenderTargetHandle next_handle { 1 }; // 0 is reserved for TARGET_MAIN
+    TextureHandle next_tex_handle { 1 };
 };
 
 
@@ -55,28 +61,6 @@ static void Shutdown(entt::registry& registry) {
     // Remove the context entirely, destroying all cv::Mat buffers automatically
     registry.ctx().erase<OpenCVContext>();
 }
-
-
-
-// --- Render Targets (FBOs) ---------------------------------------
-static RenderTargetHandle CreateTarget(entt::registry& registry, uint32_t width, uint32_t height) {
-    auto& ctx = registry.ctx().get<OpenCVContext>();
-    
-    RenderTargetHandle handle = ctx.next_handle++;
-    ctx.render_targets[handle] = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
-    return handle;
-}
-
-static void DestroyTarget(entt::registry& registry, RenderTargetHandle handle) {
-    if (handle == TARGET_MAIN) return; // Never destroy the main screen buffer directly
-    
-    auto& ctx = registry.ctx().get<OpenCVContext>();
-    ctx.render_targets.erase(handle);
-}
-
-
-
-// --- Rendering ---------------------------------------------------
 static void RenderFrame(entt::registry& registry) {
     auto& ctx = registry.ctx().get<OpenCVContext>();
 
@@ -85,12 +69,10 @@ static void RenderFrame(entt::registry& registry) {
         mat.setTo(cv::Scalar(30, 30, 30));
     }
 
-    // Rendering logic
 
-    // Cache all renderable objects 
-    auto mesh_view = registry.view<tf::TFWorldTransformComponent, data::MeshData>();
 
-    // Each camera is a render pass
+    // --- 3D Rendering --------------------------------------------
+    auto mesh_view = registry.view<tf::TFWorldTransformComponent, data::MeshLinkage>();
     auto cam_view = registry.view<camera::CameraComponent, camera::CameraRuntimeComponent>();
     for (auto cam_entity : cam_view) {
         const auto& cam = cam_view.get<camera::CameraComponent>(cam_entity);
@@ -108,9 +90,16 @@ static void RenderFrame(entt::registry& registry) {
         float half_h = static_cast<float>(render_target.rows) * 0.5f;
 
         // Mesh drawing
-        for (auto mesh_entity : mesh_view) {
-            const auto& world_tf = mesh_view.get<tf::TFWorldTransformComponent>(mesh_entity);
-            const auto& mesh = mesh_view.get<data::MeshData>(mesh_entity);
+        for (auto physical_entity : mesh_view) {
+            const auto& world_tf = mesh_view.get<tf::TFWorldTransformComponent>(physical_entity);
+            const auto& linkage = mesh_view.get<data::MeshLinkage>(physical_entity);
+            
+            // Obtain actual mesh data
+            if (!registry.valid(linkage.mesh_asset)) continue;
+            if (!registry.all_of<data::MeshSourceComponent>(linkage.mesh_asset)) continue;
+            const auto& source = registry.get<data::MeshSourceComponent>(linkage.mesh_asset);
+            if (!source.mesh) continue;
+            const auto& mesh = *source.mesh;
 
             // Pre-compute the final Model-View-Projection (MVP) matrix
             glm::mat4 mvp = cam_rt.view_projection_matrix * world_tf.matrix;
@@ -129,7 +118,9 @@ static void RenderFrame(entt::registry& registry) {
 
                 // Viewport Transform (NDC [-1, 1] to Pixels [0, width/height])
                 int px = static_cast<int>((ndc.x + 1.0f) * half_w);
-                int py = static_cast<int>((ndc.y + 1.0f) * half_h);
+                // Map NDC +1 (Top) to Pixel 0 (Top)
+                // int py = static_cast<int>((ndc.y + 1.0f) * half_h);
+                int py = static_cast<int>((1.0f - ndc.y) * half_h);
 
                 return cv::Point(px, py);
             };
@@ -195,12 +186,95 @@ static void RenderFrame(entt::registry& registry) {
 
 
 
+    // --- 2D Rendering --------------------------------------------
+    auto ui_view = registry.view<data::TextureLinkage>();
+    for (auto ui_entity : ui_view) {
+        const auto& linkage = ui_view.get<data::TextureLinkage>(ui_entity);
+        
+        if (!registry.valid(linkage.texture_asset)) continue;
+        if (!registry.all_of<data::TextureRuntimeComponent>(linkage.texture_asset)) continue;
+        
+        // Get the hardware texture handle
+        rhi::TextureHandle tex_handle = registry.get<data::TextureRuntimeComponent>(linkage.texture_asset).handle;
+        
+        if (ctx.textures.find(tex_handle) != ctx.textures.end()) {
+            const cv::Mat& source_tex = ctx.textures[tex_handle];
+            cv::Mat& main_target = ctx.render_targets[TARGET_MAIN];
+            
+            // Map normalized coordinates [0..1] to actual window pixels
+            int px = static_cast<int>(linkage.screen_x * main_target.cols);
+            int py = static_cast<int>(linkage.screen_y * main_target.rows);
+            int pw = static_cast<int>(linkage.screen_w * main_target.cols);
+            int ph = static_cast<int>(linkage.screen_h * main_target.rows);
+            
+            // Ensure bounds are safe
+            if (pw > 0 && ph > 0 && px >= 0 && py >= 0 && px + pw <= main_target.cols && py + ph <= main_target.rows) {
+                // Resize and overlay the texture
+                cv::Mat resized;
+                cv::resize(source_tex, resized, cv::Size(pw, ph));
+                resized.copyTo(main_target(cv::Rect(px, py, pw, ph)));
+            }
+        }
+    }
+
+
+
     // Present only the MAIN target to the window
     if (ctx.config.mode == RHIRenderingMode::WINDOW) {
         cv::imshow(ctx.config.title, ctx.render_targets[TARGET_MAIN]);
         cv::waitKey(1);
     }
 }
+
+
+
+// --- Render Targets (FBOs) ---------------------------------------
+static RenderTargetHandle CreateTarget(entt::registry& registry, uint32_t width, uint32_t height) {
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    
+    RenderTargetHandle handle = ctx.next_handle++;
+    ctx.render_targets[handle] = cv::Mat(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
+    return handle;
+}
+static void DestroyTarget(entt::registry& registry, RenderTargetHandle handle) {
+    if (handle == TARGET_MAIN) return; // Never destroy the main screen buffer directly
+    
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    ctx.render_targets.erase(handle);
+}
+
+
+
+// --- Textures ----------------------------------------------------
+static void UpdateTexture(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) {
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    if (ctx.textures.find(handle) == ctx.textures.end() || image_data.data.empty()) return;
+
+    int type = (image_data.channels == data::ImageChannelLayout::CH_4) ? CV_8UC4 : CV_8UC3;
+    cv::Mat incoming(image_data.height, image_data.width, type, (void*)image_data.data.data());
+    incoming.copyTo(ctx.textures[handle]);
+}
+static TextureHandle CreateTexture(entt::registry& registry, const data::ImageData& image_data) {
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    
+    TextureHandle handle = ctx.next_tex_handle++;
+    
+    // Allocate the empty matrix using the correct type
+    int type = (image_data.channels == data::ImageChannelLayout::CH_4) ? CV_8UC4 : CV_8UC3;
+    ctx.textures[handle] = cv::Mat(image_data.height, image_data.width, type, cv::Scalar(0,0,0));
+    
+    // Push the initial bytes 
+    UpdateTexture(registry, handle, image_data);
+    return handle;
+}
+static void DestroyTexture(entt::registry& registry, TextureHandle handle) {
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    ctx.textures.erase(handle); // Safely frees the OpenCV cv::Mat memory
+}
+
+
+
+// --- Retrieve Rendered Data --------------------------------------
 static data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
     data::ImageData img;
     auto& ctx = registry.ctx().get<OpenCVContext>();
@@ -227,11 +301,18 @@ static data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHand
 RHIBackend CreateBackend() {
     RHIBackend backend;
     backend.type                = RHIBackendType::OPENCV;
+
     backend.Initialize          = Initialize;
     backend.Shutdown            = Shutdown;
     backend.RenderFrame         = RenderFrame;
+
     backend.CreateRenderTarget  = CreateTarget;
     backend.DestroyRenderTarget = DestroyTarget;
+
+    backend.CreateTexture       = CreateTexture;
+    backend.UpdateTexture       = UpdateTexture;
+    backend.DestroyTexture      = DestroyTexture;
+
     backend.GetTargetImage      = GetTargetImage;
     return backend;
 }

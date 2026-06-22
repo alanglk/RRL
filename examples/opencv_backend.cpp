@@ -10,6 +10,8 @@
 #include <FLogging/FLogging.hpp>
 
 // RRL Engine Modules
+#include "RRL/data/AssetManager.hpp"
+#include "RRL/data/ImageData.hpp"
 #include "RRL/tf/TransformTree.hpp"
 #include "RRL/camera/CameraSystem.hpp"
 #include "RRL/data/MeshData.hpp"
@@ -52,13 +54,13 @@ int main() {
 
     LOG_INFO("[RRL Engine] Booting subsystems...");
     tf::RegisterTFActions(registry);
+    data::InitializeAssetManager(registry);
     rhi::LoadBackend(rhi::RHIBackendType::OPENCV, registry);
-
 
     rhi::RHIConfig config;
     config.width = 1024;
     config.height = 768;
-    config.title = "RRL - OpenCV Rasterizer";
+    config.title = "RRL - OpenCV Architecture Update";
     config.mode = rhi::RHIRenderingMode::WINDOW;
 
     if (!rhi::Initialize(registry, config)) {
@@ -66,11 +68,38 @@ int main() {
         return -1;
     }
 
-    // Setup Scene Objects
-    auto cube_entity = registry.create();
-    tf::AddTransform(registry, cube_entity, glm::vec3(0.0f, 0.0f, 0.0f));
-    registry.emplace<data::MeshData>(cube_entity, CreateWireframeCube(2.0f)); // 2-meter cube
+    // --- 3D Asset Creation ---
+    // Generate the raw asset inside the AssetManager storage registry
+    entt::entity cube_asset = data::CreateMesh(registry, CreateWireframeCube(2.0f));
 
+    // --- Physical World Object Creation ---
+    // Instantiate a concrete physical object in our 3D space
+    auto cube_world_object = registry.create();
+    tf::AddTransform(registry, cube_world_object, glm::vec3(0.0f, 0.0f, 0.0f));
+    
+    // Explicitly link the physical world instance to our asset geometry database
+    data::BindMesh(registry, cube_world_object, cube_asset);
+
+    // --- Pure 2D Display Element Stream Overlay ---
+    // Provision a dynamic runtime texture to play back video frames or UI overlays
+    uint32_t ui_w = 256;
+    uint32_t ui_h = 256;
+    
+    data::ImageData ui_image;
+    ui_image.width = ui_w;
+    ui_image.height = ui_h;
+    ui_image.channels = data::ImageChannelLayout::CH_3;
+    ui_image.data_type = data::ImageDataType::UINT8;
+    // Fixed: Account for 3 channels per pixel to prevent vector out-of-bounds runtime crashes
+    ui_image.data.resize(ui_w * ui_h * 3, 0); 
+    
+    entt::entity ui_texture = data::CreateTexture(registry, std::move(ui_image));
+    
+    // Create a flat screen element entity and attach it via the safe public API
+    entt::entity picture_in_picture_ui = registry.create();
+    data::BindUITexture(registry, picture_in_picture_ui, ui_texture, 0.02f, 0.02f, 0.25f, 0.25f);
+
+    // --- Camera Hierarchical Assembly Setup ---
     // Create a root gimbal mount entity located 6 meters back and 3 meters up
     auto rig_entity = registry.create();
     tf::AddTransform(registry, rig_entity, glm::vec3(-6.0f, 0.0f, 3.0f));
@@ -88,16 +117,28 @@ int main() {
 
     camera::AddCamera(registry, camera_entity, camera_model, rhi::TARGET_MAIN);
 
-
     // Main loop
     LOG_INFO("[RRL Engine] Entering main loop...");
     float time = 0.0f;
     while (true) {
+        time += 0.015f;
+
+        // --- 1. Async Streaming / Simulation Updates ---
+        // Access our texture source component to inject procedurally changing color values (Simulating a dynamic network feed)
+        data::ImageData dynamic_frame;
+        dynamic_frame.width     = ui_w;
+        dynamic_frame.height    = ui_h;
+        dynamic_frame.channels  = data::ImageChannelLayout::CH_3;
+        dynamic_frame.data_type = data::ImageDataType::UINT8;
+        dynamic_frame.data.resize(ui_w * ui_h * 3);
+
+        uint8_t shift = static_cast<uint8_t>((std::sin(time) * 0.5f + 0.5f) * 255.0f);
+        std::fill(dynamic_frame.data.begin(), dynamic_frame.data.end(), shift);
+        data::UpdateTexture(registry, ui_texture, std::move(dynamic_frame));
 
         // Simple orbital logic: Move the rig in a circle around the origin over time
-        time += 0.015f;
         float radius = 7.0f;
-        glm::vec3 dynamic_position(cos(time) * radius, sin(time) * radius, 3.0f);
+        glm::vec3 dynamic_position(std::cos(time) * radius, std::sin(time) * radius, 3.0f);
         
         // Calculate orientation pointing toward the origin (ISO 8855: +X is Forward, +Y is Left, +Z is Up)
         glm::vec3 forward = glm::normalize(glm::vec3(0.0f) - dynamic_position);
@@ -109,24 +150,22 @@ int main() {
         glm::mat3 basis(forward, left, true_up);
         glm::quat dynamic_rotation = glm::quat_cast(basis);
 
-
         // Safely update the local transform components inside the ECS
         tf::SetLocalPosition(registry, rig_entity, dynamic_position);
         tf::SetLocalRotation(registry, rig_entity, dynamic_rotation);
 
-
-        // Tick Update Sequence 
+        // --- 2. Core Processing Loop Sequence ---
         tf::UpdateTransformTree(registry);
         camera::UpdateCameras(registry, camera::NDC_OPENCV);
+        rhi::SyncResources(registry);
         rhi::RenderFrame(registry);
-
 
         // ~60 FPS main loop
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
-
     // Cleanup
+    data::DestroyAllAssets(registry);
     rhi::Shutdown(registry);
     flogging::ResetLogger();
     return 0;

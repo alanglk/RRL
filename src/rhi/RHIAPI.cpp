@@ -3,6 +3,8 @@
 #include "RRL/rhi/RHIAPI.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
 
+#include "RRL/data/SynchronizationSystems.hpp"
+
 #include <FLogging/FLogging.hpp>
 #include "RRL/DebugMacros.hpp"
 
@@ -65,6 +67,11 @@ if (g_active_backend.Shutdown != nullptr) {
     }
     g_active_backend = RHIBackend{}; // Reset backend to NONE
 }
+void SyncResources(entt::registry& registry) {
+    data::SyncTexturesToRHI(registry);
+    // data::SyncMeshesToRHI(registry);
+    // data::SyncMaterialsToRHI(registry);
+}
 void RenderFrame(entt::registry& registry) {
     RRL_ASSERT(g_active_backend.RenderFrame != nullptr, "RHI RenderFrame called but no backend is loaded!");
     g_active_backend.RenderFrame(registry);
@@ -82,14 +89,30 @@ void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle handle) {
         g_active_backend.DestroyRenderTarget(registry, handle);
     }
 }
+
+// --- Textures ----------------------------------------------------
+TextureHandle CreateTexture(entt::registry& registry, const data::ImageData& image_data) {
+    RRL_ASSERT(g_active_backend.CreateTexture != nullptr, "RHI CreateTexture called but no backend is loaded!");
+    return g_active_backend.CreateTexture(registry, image_data);
+}
+void UpdateTexture(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) {
+    RRL_ASSERT(g_active_backend.UpdateTexture != nullptr, "RHI UpdateTexture called but no backend is loaded!");
+    g_active_backend.UpdateTexture(registry, handle, image_data);
+}
+void DestroyTexture(entt::registry& registry, TextureHandle handle) {
+    if (g_active_backend.DestroyTexture != nullptr) {
+        g_active_backend.DestroyTexture(registry, handle);
+    }
+}
+
+
+
 data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
     if (g_active_backend.GetTargetImage != nullptr) {
         return g_active_backend.GetTargetImage(registry, handle);
     }
     return data::ImageData{}; // Return empty image
 }
-
-
 
 
 } // namespace rrl::rhi

@@ -1,6 +1,9 @@
+// RRL/include/data/MeshData.hpp
 #pragma once
 
-#include "glm/fwd.hpp"
+#include <glm/fwd.hpp>
+#include <entt/entt.hpp>
+
 #include <cstdint>
 #include <vector>
 
@@ -23,7 +26,10 @@ enum class MeshTopology : uint8_t {
 struct MeshMaterial {
     uint32_t index_offset { 0 };
     uint32_t index_count { 0 };
-    // entt::hashed_string material_id; 
+
+    // Links to an entity in the registry that holds a `MaterialData` component.
+    // If entt::null, the RHI will use a default fallback material.
+    entt::entity material_entity { entt::null };
 };
 
 

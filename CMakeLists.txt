@@ -71,9 +71,14 @@ endif()
 set(RRL_SOURCES
     src/tf/TransformTree.cpp
     src/tf/TFComponents.cpp
+
+    src/data/AssetManager.cpp
+    src/data/SynchronizationSystems.cpp
+
     src/camera/CameraSystem.cpp
     src/io/ImageIO.cpp
     src/rhi/RHIAPI.cpp
+
 )
 
 
@@ -221,6 +226,11 @@ if(RRL_EXAMPLES)
     file(GLOB_RECURSE RRL_EXAMPLE_SOURCES "examples/*.cpp" "examples/*.cc")
     if(RRL_EXAMPLE_SOURCES)
 
+        # Temp linking for examples
+        find_package(Threads REQUIRED)
+        find_package(Boost REQUIRED)
+        find_package(OpenCV REQUIRED)
+
         foreach(example_file IN LISTS RRL_EXAMPLE_SOURCES)
             file(RELATIVE_PATH rel_path ${CMAKE_CURRENT_SOURCE_DIR} ${example_file})
             message(STATUS "Found example source file: ${rel_path}")
@@ -230,6 +240,10 @@ if(RRL_EXAMPLES)
             target_link_libraries(${target_name} 
                 PRIVATE 
                     rrl 
+
+                    Threads::Threads
+                    Boost::boost
+                    ${OpenCV_LIBS}
             )
         endforeach()
 

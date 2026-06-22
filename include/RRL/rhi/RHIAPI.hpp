@@ -33,6 +33,13 @@ bool Initialize(entt::registry& registry, const RHIConfig& config);
 void Shutdown(entt::registry& registry);
 
 /**
+ * @brief Synchronizes all modified CPU data components (Textures, Meshes, Materials) 
+ * with their respective GPU/RHI hardware handles.
+ * Should be called once per frame, right before rhi::RenderFrame.
+ */
+void SyncResources(entt::registry& registry);
+
+/**
  * @brief Iterates the current scene, projects 3D data, and dispatches draw calls 
  * across all active cameras and render targets.
  */
@@ -51,6 +58,13 @@ RenderTargetHandle CreateRenderTarget(entt::registry& registry, uint32_t width, 
  * Note: TARGET_MAIN cannot be destroyed through this function.
  */
 void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle handle);
+
+
+// --- Textures ----------------------------------------------------
+TextureHandle CreateTexture(entt::registry& registry, const data::ImageData& image_data);
+void UpdateTexture(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data);
+void DestroyTexture(entt::registry& registry, TextureHandle handle);
+
 
 /**
  * @brief Reads rendered data from the RHI back to CPU RAM.
