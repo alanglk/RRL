@@ -72,11 +72,16 @@ set(RRL_SOURCES
     src/tf/TransformTree.cpp
     src/tf/TFComponents.cpp
 
+    src/camera/CameraSystem.cpp
+
+    src/io/PrefabIO.cpp
+    src/io/ImageIO.cpp
+
     src/data/AssetManager.cpp
     src/data/SynchronizationSystems.cpp
 
-    src/camera/CameraSystem.cpp
-    src/io/ImageIO.cpp
+    src/scene/SceneManager.cpp
+
     src/rhi/RHIAPI.cpp
 
 )
@@ -182,6 +187,7 @@ target_include_directories(rrl
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/include
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tinyobjloader
 )
 target_compile_definitions(rrl 
     PUBLIC  ${RRL_PUBLIC_COMPILE_DEFS}

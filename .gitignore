@@ -71,3 +71,4 @@ Testing/
 
 # IDE / Code Editor configurations
 .vscode/
+assets/*

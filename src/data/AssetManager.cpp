@@ -129,6 +129,12 @@ void SetAssetGCPolicy(entt::registry& registry, AssetGCPolicy policy) {
         registry.ctx().get<AssetCache>().gc_policy = policy;
     }
 }
+AssetGCPolicy GetAssetGCPolicy(entt::registry& registry) {
+    if (registry.ctx().contains<AssetCache>()) {
+        return registry.ctx().get<AssetCache>().gc_policy;
+    }
+    return AssetGCPolicy::CASCADE_DELETE;
+}
 void FreeUnusedAssets(entt::registry& registry) {
     bool assets_freed = true;
     

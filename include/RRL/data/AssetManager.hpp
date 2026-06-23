@@ -32,6 +32,10 @@ void InitializeAssetManager(entt::registry& registry);
  */
 void SetAssetGCPolicy(entt::registry& registry, AssetGCPolicy policy);
 /**
+ * @brief Gets the global garbage collection policy of the asset manager.
+ */
+AssetGCPolicy GetAssetGCPolicy(entt::registry& registry);
+/**
  * @brief Free all assets with 0 active references.
  * Highly recommended to call this during scene transitions if KEEP_CACHED_ASSETS is active.
  */
@@ -70,11 +74,11 @@ void UpdateTexture(entt::registry& registry, entt::entity texture_asset, ImageDa
 
 
 // --- Meshes ------------------------------------------------------
-/**
- * @brief Loads a 3D mesh from disk into the ECS. 
- * Returns the cached entity ID if already loaded.
- */
-entt::entity LoadMeshFromFile(entt::registry& registry, const std::string& filepath);
+// /**
+//  * @brief Loads a 3D mesh from disk into the ECS. 
+//  * Returns the cached entity ID if already loaded.
+//  */
+// entt::entity LoadMeshFromFile(entt::registry& registry, const std::string& filepath);
 /**
  * @brief Creates a mesh from an existing MeshData struct.
  * Takes ownership of the data via move semantics to prevent deep copies.

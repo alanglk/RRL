@@ -68,8 +68,8 @@ if (g_active_backend.Shutdown != nullptr) {
 }
 void SyncResources(entt::registry& registry) {
     data::SyncTexturesToRHI(registry);
-    // data::SyncMeshesToRHI(registry);
-    // data::SyncMaterialsToRHI(registry);
+    data::SyncMeshesToRHI(registry);
+    data::SyncMaterialsToRHI(registry);
 }
 void RenderFrame(entt::registry& registry) {
     RRL_ASSERT(g_active_backend.RenderFrame != nullptr, "RHI RenderFrame called but no backend is loaded!");
