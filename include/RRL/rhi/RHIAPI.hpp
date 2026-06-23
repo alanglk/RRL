@@ -61,11 +61,36 @@ void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle handle);
 
 
 // --- Textures ----------------------------------------------------
+/**
+ * @brief Requests the backend to allocate and create a texture.
+ */
 TextureHandle CreateTexture(entt::registry& registry, const data::ImageData& image_data);
+/**
+ * @brief Updates an already allocated texture.
+ */
 void UpdateTexture(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data);
+/**
+ * @brief Destroys a texture freeing its memory.
+ */
 void DestroyTexture(entt::registry& registry, TextureHandle handle);
 
 
+// --- Meshes ------------------------------------------------------
+/**
+ * @brief Requests the backend to allocate and create a mesh.
+ */
+MeshHandle CreateMesh(entt::registry& registry);
+/**
+ * @brief Updates an already allocated mesh.
+ */
+void UpdateMesh(entt::registry& registry, MeshHandle handle);
+/**
+ * @brief Destroys a mesh freeing its memory.
+ */
+void DestroyMesh(entt::registry& registry, MeshHandle handle);
+
+
+// --- Retrieve Rendered Data --------------------------------------
 /**
  * @brief Reads rendered data from the RHI back to CPU RAM.
  */

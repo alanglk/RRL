@@ -31,7 +31,6 @@ static void DeduceLayouts(int channels, ImageChannelLayout& out_ch, ImageColorLa
 
 
 // --- I/O ---------------------------------------------------------
-
 ImageData LoadImage(const std::string& filepath) {
     ImageData img;
 

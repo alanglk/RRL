@@ -73,6 +73,11 @@ struct RHIBackend {
     TextureHandle (*CreateTexture)(entt::registry& registry, const data::ImageData& image_data) { nullptr };
     void (*UpdateTexture)(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) { nullptr };
     void (*DestroyTexture)(entt::registry& registry, TextureHandle handle) { nullptr };
+    
+    // Meshes COMPLETE THIS
+    MeshHandle (*CreateMesh)(entt::registry& registry) { nullptr } ;
+    void (*UpdateMesh)(entt::registry& registry, MeshHandle handle) { nullptr };
+    void (*DestroyMesh)(entt::registry& registry, MeshHandle handle) { nullptr };
 
     // Reads rendered data from the RHI back to CPU RAM
     data::ImageData (*GetTargetImage)(entt::registry& registry, RenderTargetHandle handle) { nullptr };

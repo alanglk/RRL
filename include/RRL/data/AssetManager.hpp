@@ -12,12 +12,30 @@
 namespace rrl::data {
 
 
+/**
+ * @brief Defines how the AssetManager handles assets whose reference count drops to 0.
+ */
+enum class AssetGCPolicy : uint8_t {
+    CASCADE_DELETE = 0,     // Destroy the asset and cascade the deletion
+    KEEP_CACHED_ASSETS = 0  // Keep the asset in memory for future usage
+};
+
 
 // --- Lifecycle ---------------------------------------------------
 /**
  * @brief Initializes the asset system and registers EnTT memory cleanup hooks.
+ * The default AssetGCPolicy is set to CASCADE_DELETE.
  */
 void InitializeAssetManager(entt::registry& registry);
+/**
+ * @brief Sets the global garbage collection policy for the asset manager.
+ */
+void SetAssetGCPolicy(entt::registry& registry, AssetGCPolicy policy);
+/**
+ * @brief Free all assets with 0 active references.
+ * Highly recommended to call this during scene transitions if KEEP_CACHED_ASSETS is active.
+ */
+void FreeUnusedAssets(entt::registry& registry);
 /**
  * @brief Safely destroys an asset (Texture, Mesh, Material).
  * Automatically frees the associated RHI backend memory via ECS hooks.
@@ -27,7 +45,6 @@ void DestroyAsset(entt::registry& registry, entt::entity asset_entity);
  * @brief Clears all cached assets.
  */
 void DestroyAllAssets(entt::registry& registry);
-
 
 
 // --- Textures ----------------------------------------------------

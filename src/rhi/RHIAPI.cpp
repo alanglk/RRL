@@ -106,6 +106,24 @@ void DestroyTexture(entt::registry& registry, TextureHandle handle) {
 }
 
 
+// --- Meshes ------------------------------------------------------
+// TODO: complete this
+MeshHandle CreateMesh(entt::registry& registry) {
+    RRL_ASSERT(g_active_backend.CreateMesh != nullptr, "RHI CreateMesh called but no backend is loaded!");
+    return g_active_backend.CreateMesh(registry);
+}
+void UpdateMesh(entt::registry& registry, MeshHandle handle) {
+    RRL_ASSERT(g_active_backend.UpdateMesh != nullptr, "RHI UpdateMesh called but no backend is loaded!");
+    g_active_backend.UpdateMesh(registry, handle);
+}
+void DestroyMesh(entt::registry& registry, MeshHandle handle) {
+    if (g_active_backend.DestroyMesh != nullptr) {
+        g_active_backend.DestroyMesh(registry, handle);
+    }
+}
+
+
+
 
 data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
     if (g_active_backend.GetTargetImage != nullptr) {
