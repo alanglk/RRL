@@ -79,15 +79,30 @@ void DestroyTexture(entt::registry& registry, TextureHandle handle);
 /**
  * @brief Requests the backend to allocate and create a mesh.
  */
-MeshHandle CreateMesh(entt::registry& registry);
+MeshHandle CreateMesh(entt::registry& registry, const data::MeshData& mesh_data);
 /**
  * @brief Updates an already allocated mesh.
  */
-void UpdateMesh(entt::registry& registry, MeshHandle handle);
+void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::MeshData& mesh_data);
 /**
  * @brief Destroys a mesh freeing its memory.
  */
 void DestroyMesh(entt::registry& registry, MeshHandle handle);
+
+
+// --- Materials ---------------------------------------------------
+/**
+ * @brief Requests the backend to allocate and create a new material.
+ */
+MaterialHandle CreateMaterial(entt::registry& registry, const data::MaterialData& material_data);
+/**
+ * @brief Updates an already allocated material.
+ */
+void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data);
+/**
+ * @brief Destroys a material freeing its memory.
+ */
+void DestroyMaterial(entt::registry& registry, MaterialHandle handle);
 
 
 // --- Retrieve Rendered Data --------------------------------------

@@ -4,7 +4,8 @@
 #include <entt/entt.hpp>
 
 #include "RRL/data/ImageData.hpp"
-#include "entt/entity/fwd.hpp"
+#include "RRL/data/MeshData.hpp"
+#include "RRL/data/MaterialData.hpp"
 
 #include <cstdint>
 #include <string>
@@ -21,9 +22,14 @@ constexpr RenderTargetHandle TARGET_NULL = 0xFFFFFFFF;  // Null handle
 using TextureHandle = uint32_t;
 constexpr TextureHandle TEXTURE_NULL = 0xFFFFFFFF;  // Null handle
 
-// RHI texture handling (loaded/allocated textures)
+// RHI mesh handling (loaded/allocated meshes)
 using MeshHandle = uint32_t;
 constexpr MeshHandle MESH_NULL = 0xFFFFFFFF;  // Null handle
+
+// RHI material handling (UBO tracking)
+using MaterialHandle = uint32_t;
+constexpr MaterialHandle MATERIAL_NULL = 0xFFFFFFFF;  // Null handle
+
 
 
 /**
@@ -74,10 +80,17 @@ struct RHIBackend {
     void (*UpdateTexture)(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) { nullptr };
     void (*DestroyTexture)(entt::registry& registry, TextureHandle handle) { nullptr };
     
-    // Meshes COMPLETE THIS
-    MeshHandle (*CreateMesh)(entt::registry& registry) { nullptr } ;
-    void (*UpdateMesh)(entt::registry& registry, MeshHandle handle) { nullptr };
+    // Meshes
+    MeshHandle (*CreateMesh)(entt::registry& registry, const data::MeshData& mesh_data) { nullptr };
+    void (*UpdateMesh)(entt::registry& registry, MeshHandle handle, const data::MeshData& mesh_data) { nullptr };
     void (*DestroyMesh)(entt::registry& registry, MeshHandle handle) { nullptr };
+
+
+    // --- Materials ---
+    MaterialHandle (*CreateMaterial)(entt::registry& registry, const data::MaterialData& material_data) { nullptr };
+    void (*UpdateMaterial)(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data) { nullptr };
+    void (*DestroyMaterial)(entt::registry& registry, MaterialHandle handle) { nullptr };
+
 
     // Reads rendered data from the RHI back to CPU RAM
     data::ImageData (*GetTargetImage)(entt::registry& registry, RenderTargetHandle handle) { nullptr };

@@ -1,13 +1,18 @@
 // RRL/src/rhi/opencv/OpenCVRenderer.cpp
 
+#include "RRL/data/MeshData.hpp"
+#include "RRL/rhi/RHIAPI.hpp"
+#include "entt/entity/entity.hpp"
 #ifndef  RRL_RHI_OPENCV
     #error "OpenCVRenderer.hpp file must be compiled with OpenCV support."
 #endif
 
 #include "RRL/camera/CameraComponents.hpp"
 #include "RRL/tf/TFComponents.hpp"
-#include "RRL/data/MeshComponents.hpp"
+
 #include "RRL/data/TextureComponents.hpp"
+#include "RRL/data/MeshComponents.hpp"
+#include "RRL/data/MaterialComponents.hpp"
 
 #include "RRL/rhi/RHIBackend.hpp"
 
@@ -16,7 +21,9 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include <FLogging/FLogging.hpp>
 
+#include <glm/glm.hpp>
 #include <unordered_map>
 
 
@@ -30,8 +37,13 @@ struct OpenCVContext {
     RHIConfig config;
     std::unordered_map<RenderTargetHandle, cv::Mat> render_targets;
     std::unordered_map<TextureHandle, cv::Mat> textures;
-    RenderTargetHandle next_handle { 1 }; // 0 is reserved for TARGET_MAIN
-    TextureHandle next_tex_handle { 1 };
+    std::unordered_map<MeshHandle, data::MeshData> meshes;
+    std::unordered_map<MaterialHandle, data::MaterialData> materials;
+
+    RenderTargetHandle next_handle  { 1 }; // 0 is reserved for TARGET_MAIN
+    TextureHandle next_tex_handle   { 1 };
+    MeshHandle next_mesh_handle     { 1 };
+    MaterialHandle next_mat_handle  { 1 };
 };
 
 
@@ -47,6 +59,8 @@ static bool Initialize(entt::registry& registry, const RHIConfig& config) {
     if (config.mode == RHIRenderingMode::WINDOW) {
         cv::namedWindow(config.title, cv::WINDOW_AUTOSIZE);
     }
+    
+    LOG_WARN("[OpenCV RHI] CPU-only mode. Expect deep-copy memory overhead during asset synchronization to mimic GPU VRAM uploads.");
     return true;
 }
 static void Shutdown(entt::registry& registry) {
@@ -96,13 +110,15 @@ static void RenderFrame(entt::registry& registry) {
             
             // Obtain actual mesh data
             if (!registry.valid(linkage.mesh_asset)) continue;
-            if (!registry.all_of<data::MeshSourceComponent>(linkage.mesh_asset)) continue;
-            const auto& source = registry.get<data::MeshSourceComponent>(linkage.mesh_asset);
-            if (!source.mesh) continue;
-            const auto& mesh = *source.mesh;
+            if (!registry.all_of<data::MeshRuntimeComponent>(linkage.mesh_asset)) continue;
+            MeshHandle mesh_handle = registry.get<data::MeshRuntimeComponent>(linkage.mesh_asset).handle;
+            if (ctx.meshes.find(mesh_handle) == ctx.meshes.end()) continue;
+            const auto& mesh = ctx.meshes[mesh_handle];
 
             // Pre-compute the final Model-View-Projection (MVP) matrix
             glm::mat4 mvp = cam_rt.view_projection_matrix * world_tf.matrix;
+
+            
 
             // Lambda to project a 3D point in Local Coordinate System (LCS) to 2D pixel coordinates
             auto project_vertex = [&](const glm::vec3& local_pos) -> cv::Point {
@@ -126,64 +142,94 @@ static void RenderFrame(entt::registry& registry) {
             };
 
             
-            // Rasterization
+            // Resolve material
+            glm::vec4 mat_base_color(1.0f, 1.0f, 1.0f, 1.0f);
+            if (!mesh.materials.empty()) {
+                entt::entity mat_entity = mesh.materials[0].material_entity;
+                if (mat_entity != entt::null && registry.valid(mat_entity) && registry.all_of<data::MaterialRuntimeComponent>(mat_entity)) {
+                    MaterialHandle mat_handle = registry.get<data::MaterialRuntimeComponent>(mat_entity).handle;
+                    if (ctx.materials.find(mat_handle) != ctx.materials.end()) {
+                        mat_base_color = ctx.materials[mat_handle].base_color;
+                    }
+                }
+            }
+
+            // Lambda to blend colors
+            auto get_blended_color = [&](const std::vector<uint32_t>& v_indices) -> cv::Scalar {
+                glm::vec4 v_color(1.0f, 1.0f, 1.0f, 1.0f); // Default white vertex
+                
+                if (!mesh.colors.empty()) {
+                    v_color = glm::vec4(0.0f);
+                    for (uint32_t idx : v_indices) {
+                        if (idx < mesh.colors.size()) {
+                            v_color += glm::vec4(mesh.colors[idx].x, mesh.colors[idx].y, mesh.colors[idx].z, 1.0f);
+                        } else {
+                            v_color += glm::vec4(1.0f);
+                        }
+                    }
+                    v_color /= static_cast<float>(v_indices.size()); // Average across the face
+                }
+                glm::vec4 final_color = mat_base_color * v_color;
+                return cv::Scalar(
+                    static_cast<int>(std::clamp(final_color.b * 255.0f, 0.0f, 255.0f)), // B
+                    static_cast<int>(std::clamp(final_color.g * 255.0f, 0.0f, 255.0f)), // G
+                    static_cast<int>(std::clamp(final_color.r * 255.0f, 0.0f, 255.0f))  // R
+                );
+            };
+
             
-            // Point Clouds
+            // Point Cloud Rasterization
             if (mesh.topology == data::MeshTopology::POINTS) {
                 for (size_t i = 0; i < mesh.positions.size(); ++i) {
                     cv::Point p = project_vertex(mesh.positions[i]);
                     
-                    // Frustum boundary clipping check
                     if (p.x >= 0 && p.x < render_target.cols && p.y >= 0 && p.y < render_target.rows) {
-                        // Check if the mesh contains vertex color attributes, fallback to green
-                        cv::Scalar color(0, 255, 0); // BGR
-                        if (!mesh.colors.empty() && i < mesh.colors.size()) {
-                            const auto& c = mesh.colors[i];
-                            color = cv::Scalar(
-                                static_cast<int>(c.z * 255.0f), // B
-                                static_cast<int>(c.y * 255.0f), // G
-                                static_cast<int>(c.x * 255.0f)  // R
-                            );
-                        }
-                        cv::circle(render_target, p, 1, color, -1);
+                        cv::Scalar final_color = get_blended_color({ static_cast<uint32_t>(i) });
+                        cv::circle(render_target, p, 2, final_color, -1); // Radius 2 for better visibility
                     }
                 }
             } 
-            // Indexed Wireframe Meshes / Lines
+            // Triangles and Lines Rasterization
             else if ((mesh.topology == data::MeshTopology::TRIANGLES || mesh.topology == data::MeshTopology::LINES) 
                      && !mesh.indices.empty()) 
             {
-                // Step size depends on topology
                 size_t step = (mesh.topology == data::MeshTopology::TRIANGLES) ? 3 : 2;
                 
                 for (size_t i = 0; i < mesh.indices.size(); i += step) {
-                    // Triangle wireframe
+                    
+                    // Solid Triangles
                     if (step == 3 && i + 2 < mesh.indices.size()) {
                         cv::Point p1 = project_vertex(mesh.positions[mesh.indices[i]]);
                         cv::Point p2 = project_vertex(mesh.positions[mesh.indices[i + 1]]);
                         cv::Point p3 = project_vertex(mesh.positions[mesh.indices[i + 2]]);
 
                         if (p1.x != -1 && p2.x != -1 && p3.x != -1) {
-                            cv::Scalar color(200, 200, 200);
-                            cv::line(render_target, p1, p2, color, 1);
-                            cv::line(render_target, p2, p3, color, 1);
-                            cv::line(render_target, p3, p1, color, 1);
+                            cv::Scalar face_color = get_blended_color({mesh.indices[i], mesh.indices[i+1], mesh.indices[i+2]});
+                            
+                            // Fill the solid polygon
+                            std::vector<cv::Point> pts = {p1, p2, p3};
+                            cv::fillConvexPoly(render_target, pts.data(), 3, face_color);
+
+                            // (Because OpenCV lacks a Z-buffer, solid objects look like flat blobs without edges)
+                            cv::Scalar edge_color(face_color[0] * 0.7, face_color[1] * 0.7, face_color[2] * 0.7);
+                            cv::polylines(render_target, pts, true, edge_color, 1);
                         }
                     } 
-                    // Direct segment lines
+                    // Lines
                     else if (step == 2 && i + 1 < mesh.indices.size()) {
                         cv::Point p1 = project_vertex(mesh.positions[mesh.indices[i]]);
                         cv::Point p2 = project_vertex(mesh.positions[mesh.indices[i + 1]]);
 
                         if (p1.x != -1 && p2.x != -1) {
-                            cv::line(render_target, p1, p2, cv::Scalar(100, 255, 100), 1);
+                            cv::Scalar line_color = get_blended_color({mesh.indices[i], mesh.indices[i+1]});
+                            cv::line(render_target, p1, p2, line_color, 2);
                         }
                     }
                 }
             }
+
         }
     }
-
 
 
     // --- 2D Rendering --------------------------------------------
@@ -274,6 +320,49 @@ static void DestroyTexture(entt::registry& registry, TextureHandle handle) {
 
 
 
+// --- Meshes ------------------------------------------------------
+static void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::MeshData& mesh_data) {
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    if (ctx.meshes.find(handle) != ctx.meshes.end()) {
+        ctx.meshes[handle] = mesh_data; // Update the cached geometry
+    }
+}
+
+static MeshHandle CreateMesh(entt::registry& registry, const data::MeshData& mesh_data) {
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    MeshHandle handle = ctx.next_mesh_handle++;
+    
+    ctx.meshes[handle] = mesh_data; // Cache the geometry
+    return handle;
+}
+
+static void DestroyMesh(entt::registry& registry, MeshHandle handle) {
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    ctx.meshes.erase(handle);
+}
+
+
+
+// --- Materials ---------------------------------------------------
+static void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data) {
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    if (ctx.materials.find(handle) != ctx.materials.end()) {
+        ctx.materials[handle] = material_data;
+    }
+}
+static MaterialHandle CreateMaterial(entt::registry& registry, const data::MaterialData& material_data) {
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    MaterialHandle handle = ctx.next_mat_handle++;
+    
+    ctx.materials[handle] = material_data;
+    return handle;
+}
+static void DestroyMaterial(entt::registry& registry, MaterialHandle handle) {
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+    ctx.materials.erase(handle);
+}
+
+
 // --- Retrieve Rendered Data --------------------------------------
 static data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
     data::ImageData img;
@@ -312,6 +401,14 @@ RHIBackend CreateBackend() {
     backend.CreateTexture       = CreateTexture;
     backend.UpdateTexture       = UpdateTexture;
     backend.DestroyTexture      = DestroyTexture;
+
+    backend.CreateMesh          = CreateMesh;
+    backend.UpdateMesh          = UpdateMesh;
+    backend.DestroyMesh         = DestroyMesh;
+
+    backend.CreateMaterial      = CreateMaterial;
+    backend.UpdateMaterial      = UpdateMaterial;
+    backend.DestroyMaterial     = DestroyMaterial;
 
     backend.GetTargetImage      = GetTargetImage;
     return backend;

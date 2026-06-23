@@ -1,7 +1,6 @@
 // RRL/src/rhi/RHIAPI.cpp
 
 #include "RRL/rhi/RHIAPI.hpp"
-#include "RRL/rhi/RHIBackend.hpp"
 
 #include "RRL/data/SynchronizationSystems.hpp"
 
@@ -107,15 +106,16 @@ void DestroyTexture(entt::registry& registry, TextureHandle handle) {
 
 
 // --- Meshes ------------------------------------------------------
-// TODO: complete this
-MeshHandle CreateMesh(entt::registry& registry) {
+MeshHandle CreateMesh(entt::registry& registry, const data::MeshData& mesh_data) {
     RRL_ASSERT(g_active_backend.CreateMesh != nullptr, "RHI CreateMesh called but no backend is loaded!");
-    return g_active_backend.CreateMesh(registry);
+    return g_active_backend.CreateMesh(registry, mesh_data);
 }
-void UpdateMesh(entt::registry& registry, MeshHandle handle) {
+
+void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::MeshData& mesh_data) {
     RRL_ASSERT(g_active_backend.UpdateMesh != nullptr, "RHI UpdateMesh called but no backend is loaded!");
-    g_active_backend.UpdateMesh(registry, handle);
+    g_active_backend.UpdateMesh(registry, handle, mesh_data);
 }
+
 void DestroyMesh(entt::registry& registry, MeshHandle handle) {
     if (g_active_backend.DestroyMesh != nullptr) {
         g_active_backend.DestroyMesh(registry, handle);
@@ -123,8 +123,23 @@ void DestroyMesh(entt::registry& registry, MeshHandle handle) {
 }
 
 
+// --- Materials ---------------------------------------------------
+MaterialHandle CreateMaterial(entt::registry& registry, const data::MaterialData& material_data) {
+    RRL_ASSERT(g_active_backend.CreateMaterial != nullptr, "RHI CreateMaterial called but no backend is loaded!");
+    return g_active_backend.CreateMaterial(registry, material_data);
+}
+void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data) {
+    RRL_ASSERT(g_active_backend.UpdateMaterial != nullptr, "RHI UpdateMaterial called but no backend is loaded!");
+    g_active_backend.UpdateMaterial(registry, handle, material_data);
+}
+void DestroyMaterial(entt::registry& registry, MaterialHandle handle) {
+    if (g_active_backend.DestroyMaterial != nullptr) {
+        g_active_backend.DestroyMaterial(registry, handle);
+    }
+}
 
 
+// --- Retrieve Rendered Data --------------------------------------
 data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
     if (g_active_backend.GetTargetImage != nullptr) {
         return g_active_backend.GetTargetImage(registry, handle);

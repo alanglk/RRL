@@ -2,23 +2,23 @@
 
 #include "RRL/data/AssetManager.hpp"
 #include "RRL/data/AssetReferenceCounter.hpp"
+
 #include "RRL/data/TextureComponents.hpp"
 #include "RRL/data/MeshComponents.hpp"
-#include "RRL/data/MeshData.hpp"
+#include "RRL/data/MaterialData.hpp"
+#include "RRL/data/MaterialComponents.hpp"
+
 
 #include "RRL/io/ImageIO.hpp"
+
 
 #include "RRL/rhi/RHIAPI.hpp"
 
 
 
-#include "RRL/DebugMacros.hpp"
-#include "entt/entity/entity.hpp"
-#include "entt/entity/fwd.hpp"
-#include <FLogging/FLogging.hpp>
-
-#include <opencv2/imgproc.hpp>
 #include <unordered_map>
+#include "RRL/DebugMacros.hpp"
+
 
 namespace rrl::data {
 
@@ -44,6 +44,12 @@ static void OnMeshRuntimeDestroyed(entt::registry& registry, entt::entity entity
     auto& runtime = registry.get<MeshRuntimeComponent>(entity);
     if (runtime.handle != rhi::MESH_NULL) {
         rhi::DestroyMesh(registry, runtime.handle);
+    }
+}
+static void OnMaterialRuntimeDestroyed(entt::registry& registry, entt::entity entity) {
+    auto& runtime = registry.get<MaterialRuntimeComponent>(entity);
+    if (runtime.handle != rhi::MATERIAL_NULL) {
+        rhi::DestroyMaterial(registry, runtime.handle);
     }
 }
 
@@ -110,6 +116,7 @@ void InitializeAssetManager(entt::registry& registry) {
     // Hardware Resource Cleanups
     registry.on_destroy<TextureRuntimeComponent>().connect<&OnTextureRuntimeDestroyed>();
     registry.on_destroy<MeshRuntimeComponent>().connect<&OnMeshRuntimeDestroyed>();
+    registry.on_destroy<MaterialRuntimeComponent>().connect<&OnMaterialRuntimeDestroyed>();
 
     // Asset Garbage Collection
     registry.on_destroy<TextureLinkage>().connect<&OnTextureLinkageDestroyed>();
