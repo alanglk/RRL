@@ -6,6 +6,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include <FLogging/FLogging.hpp>
 
+
+
 #include "RRL/rhi/RHIAPI.hpp"
 #include "RRL/data/AssetManager.hpp"
 #include "RRL/scene/SceneManager.hpp"
@@ -15,8 +17,8 @@
 
 
 
-
 int main() {
+    flogging::AddConsoleSink();
     flogging::InitLogger(flogging::LogLevel::Info, flogging::BackendType::StdFormat);
     entt::registry registry;
     LOG_INFO("Running Rungholt City on OpenCV Backend");
@@ -34,23 +36,20 @@ int main() {
     rrl::rhi::Initialize(registry, config);
 
     // Setup Camera
-    // Setup Camera
     auto camera_entity = registry.create();
     
     rrl::camera::PerspectiveModel camera_model;
     camera_model.fov_y_radians = glm::radians(60.0f);
     camera_model.aspect_ratio = float(config.width) / float(config.height);
     camera_model.z_near = 1.0f;     
-    camera_model.z_far = 3000.0f;   
-    glm::vec3 cam_pos(-150.0f, 0.0f, 100.0f); 
+    camera_model.z_far = 4000.0f;   
 
-    // ISO 8855 Look-At rotation (+X Forward, +Y Left, +Z Up)
+    // Camera extrinsics
+    glm::vec3 cam_pos(-10.0f, 0.0f, 5.0f);
     glm::vec3 target(0.0f, 0.0f, 0.0f);
-    glm::vec3 forward = glm::normalize(target - cam_pos);
-    glm::vec3 up(0.0f, 0.0f, 1.0f);
-    
-    // Right-handed cross products to build the orthonormal basis
-    glm::vec3 left = glm::normalize(glm::cross(up, forward));
+    glm::vec3 forward = glm::normalize(target - cam_pos); // ISO 8855 rotation (+X Forward, +Y Left, +Z Up)
+    glm::vec3 world_up(0.0f, 0.0f, 1.0f);
+    glm::vec3 left = glm::normalize(glm::cross(world_up, forward));
     glm::vec3 true_up = glm::cross(forward, left);
     glm::mat3 basis(forward, left, true_up);
     glm::quat cam_rot = glm::quat_cast(basis);
@@ -62,21 +61,23 @@ int main() {
 
     // Load and instantiate the model
     LOG_INFO("Loading city assets...");
-    rrl::io::IOPrefab rungholt_data = rrl::io::LoadPrefab("assets/models/rungholt/rungholt.obj");
-    rrl::scene::PreloadPrefabBlueprint(registry, "RungholtCity", std::move(rungholt_data));
-    entt::entity city_instance = rrl::scene::SpawnPrefab(registry, "RungholtCity");
+    rrl::io::IOPrefab rungholt_data = rrl::io::LoadPrefab("assets/models/rungholt/house.obj");
+    rrl::scene::PreloadPrefabBlueprint(registry, "rungholt_city", std::move(rungholt_data));
+    entt::entity city_instance = rrl::scene::SpawnPrefab(registry, "rungholt_city");
+    rrl::tf::SetLocalPosition(registry, city_instance, glm::vec3(0.0f, 0.0f, 0.0f));
     rrl::tf::SetLocalScale(registry, city_instance, glm::vec3(0.1f));
 
 
     // Main Loop
     LOG_INFO("Entering main loop...");
-    float rotation_y = 0.0f;
+    float rotation_z = 0.0f;
     while (true) {
         
         // Dynamically rotate the instance
         if (registry.valid(city_instance)) {
-            rotation_y += 0.01f;
-            rrl::tf::SetLocalRotation(registry, city_instance, glm::quat(glm::vec3(0.0f, rotation_y, 0.0f)));
+            rotation_z += 0.01f;
+            glm::quat city_rotation = glm::angleAxis(rotation_z, glm::vec3(0.0f, 0.0f, 1.0f));
+            rrl::tf::SetLocalRotation(registry, city_instance, city_rotation);
         }
 
         // Tick Engine Logic

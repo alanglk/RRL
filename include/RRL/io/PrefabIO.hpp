@@ -3,6 +3,10 @@
 
 #include "RRL/data/MeshData.hpp"
 #include "RRL/data/MaterialData.hpp"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+
 #include <string>
 #include <vector>
 
@@ -19,21 +23,29 @@ struct IOMaterial {
 };
 
 /**
- * @brief File loaded shape (mesh)
+ * @brief A file-loaded hierarchical node (can contain a mesh, a transform, and children).
  */
-struct IOShape {
-    std::string name;       // Shape name. For instancing
-    data::MeshData mesh;    // Shape mesh
+struct IONode {
+    std::string name;       // Node name for instancing / identification
+    data::MeshData mesh;    // Node mesh (can be empty if it's just a transform group)
+    
+    // Node default relative transform to its parent
+    glm::vec3 local_position {0.0f};
+    glm::quat local_rotation {1.0f, 0.0f, 0.0f, 0.0f};
+    glm::vec3 local_scale {1.0f};
+    
+    // Nested children nodes
+    std::vector<IONode> children;
 };
 
 /**
- * @brief File loaded complete scene (shapes and materials)
+ * @brief File loaded complete scene (hierarchy and materials)
  */
 struct IOPrefab {
     std::string filepath; // for caching
     std::vector<IOMaterial> materials;
-    std::vector<IOShape> shapes;
-};
+    std::vector<IONode> root_nodes; // hierarchy
+};;
 
 /**
  * @brief Loads prefabs data from a file.

@@ -53,33 +53,6 @@ static void OnMaterialRuntimeDestroyed(entt::registry& registry, entt::entity en
     }
 }
 
-// --- Asset GC Helpers --------------------------------------------
-static void IncrementAssetRef(entt::registry& registry, entt::entity asset) {
-    if (asset != entt::null && registry.valid(asset)) {
-        registry.get_or_emplace<AssetReferenceCounter>(asset).live_instances++;
-    }
-}
-static void DecrementAssetRef(entt::registry& registry, entt::entity asset) {
-    if (asset != entt::null && registry.valid(asset)) {
-        if (auto* ref = registry.try_get<AssetReferenceCounter>(asset)) {
-            if (ref->live_instances > 0) {
-                if (--ref->live_instances == 0) {
-                    
-                    // Check the current policy
-                    auto policy = AssetGCPolicy::CASCADE_DELETE;
-                    if (registry.ctx().contains<AssetCache>()) {
-                        policy = registry.ctx().get<AssetCache>().gc_policy;
-                    }
-
-                    // Only destroy if we are actively cascading
-                    if (policy == AssetGCPolicy::CASCADE_DELETE) {
-                        DestroyAsset(registry, asset); 
-                    }
-                }
-            }
-        }
-    }
-}
 
 // --- Asset GC Destructors ----------------------------------------
 static void OnTextureLinkageDestroyed(entt::registry& registry, entt::entity entity) {
@@ -263,6 +236,7 @@ void UpdateTexture(entt::registry& registry, entt::entity texture_asset, ImageDa
 
 
 // --- Meshes ------------------------------------------------------
+/*
 entt::entity LoadMeshFromFile(entt::registry& registry, const std::string& filepath) {
     RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
     auto& cache = registry.ctx().get<AssetCache>();
@@ -272,21 +246,21 @@ entt::entity LoadMeshFromFile(entt::registry& registry, const std::string& filep
     }
 
     // TODO: implement MeshIO
-    /*
     MeshData raw_mesh = rrl::io::LoadMesh(filepath);
     if (raw_mesh.positions.empty()) {
         LOG_ERROR("AssetManager: Failed to load mesh '{}'", filepath);
         return entt::null;
     }
     entt::entity mesh_entity = CreateMesh(registry, std::move(raw_mesh));
-    */
-    
     // Placeholder
     entt::entity mesh_entity = CreateMesh(registry, MeshTopology::TRIANGLES);
     cache.meshes[filepath] = mesh_entity;
 
     return mesh_entity;
 }
+*/
+    /*
+    */
 entt::entity CreateMesh(entt::registry& registry, MeshData&& mesh_data) {
     entt::entity mesh_entity = registry.create();
     
@@ -410,5 +384,32 @@ void UpdateUILayout(entt::registry& registry, entt::entity ui_object,
 }
 
 
+// --- GB Interface ------------------------------------------------
+void IncrementAssetRef(entt::registry& registry, entt::entity asset) {
+    if (asset != entt::null && registry.valid(asset)) {
+        registry.get_or_emplace<AssetReferenceCounter>(asset).live_instances++;
+    }
+}
+void DecrementAssetRef(entt::registry& registry, entt::entity asset) {
+    if (asset != entt::null && registry.valid(asset)) {
+        if (auto* ref = registry.try_get<AssetReferenceCounter>(asset)) {
+            if (ref->live_instances > 0) {
+                if (--ref->live_instances == 0) {
+                    
+                    // Check the current policy
+                    auto policy = AssetGCPolicy::CASCADE_DELETE;
+                    if (registry.ctx().contains<AssetCache>()) {
+                        policy = registry.ctx().get<AssetCache>().gc_policy;
+                    }
+
+                    // Only destroy if we are actively cascading
+                    if (policy == AssetGCPolicy::CASCADE_DELETE) {
+                        DestroyAsset(registry, asset); 
+                    }
+                }
+            }
+        }
+    }
+}
 
 } // namespace rrl::data

@@ -7,6 +7,10 @@
 #include <unordered_map>
 #include <vector>
 
+// The default obj loader max size is 256Mb. If you need to increase the max loading size use this:
+#ifndef TINYOBJLOADER_STREAM_READER_MAX_BYTES
+#define TINYOBJLOADER_STREAM_READER_MAX_BYTES (size_t(256) * size_t(1024) * size_t(1024))
+#endif
 #ifndef TINYOBJLOADER_IMPLEMENTATION
 #define TINYOBJLOADER_IMPLEMENTATION
 #endif
@@ -92,9 +96,16 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
 
     // Load Geometry
     for (const auto& tiny_shape : tiny_shapes) {
-        IOShape parsed_shape;
-        parsed_shape.name = tiny_shape.name;
-        parsed_shape.mesh.topology = data::MeshTopology::TRIANGLES;
+        
+        // Changed IOShape to IONode
+        IONode parsed_node; 
+        parsed_node.name = tiny_shape.name;
+        parsed_node.mesh.topology = data::MeshTopology::TRIANGLES;
+
+
+        std::transform(parsed_node.name.begin(), parsed_node.name.end(), parsed_node.name.begin(), ::tolower);
+        std::replace(parsed_node.name.begin(), parsed_node.name.end(), '.', '_');
+        if (parsed_node.name.empty()) parsed_node.name = "unnamed_shape";
 
         std::unordered_map<VertexTuple, uint32_t> unique_vertices;
         int current_material_id = -1;
@@ -109,14 +120,14 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
             // Sub-mesh boundary detection based on material ID changes
             if (face_mat_id != current_material_id) {
                 if (current_index_count > 0) {
-                    parsed_shape.mesh.materials.push_back({
+                    parsed_node.mesh.materials.push_back({
                         current_index_offset, 
                         current_index_count, 
-                        static_cast<entt::entity>(current_material_id) // Temporary index cast
+                        static_cast<entt::entity>(current_material_id)
                     });
                 }
                 current_material_id = face_mat_id;
-                current_index_offset = static_cast<uint32_t>(parsed_shape.mesh.indices.size());
+                current_index_offset = static_cast<uint32_t>(parsed_node.mesh.indices.size());
                 current_index_count = 0;
             }
 
@@ -126,35 +137,50 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
 
                 // Deduplicate vertices using the hash map
                 if (unique_vertices.count(tuple) == 0) {
-                    unique_vertices[tuple] = static_cast<uint32_t>(parsed_shape.mesh.positions.size());
+                    unique_vertices[tuple] = static_cast<uint32_t>(parsed_node.mesh.positions.size());
                     
-                    // Positions
-                    parsed_shape.mesh.positions.push_back(glm::vec3(
+                    // Convert Y-Up (OBJ) to Z-Up (ISO 8855 Standard)
+                    // X_out = X_in ; Y_out = -Z_in ; Z_out = Y_in
+                    parsed_node.mesh.positions.push_back(glm::vec3(
+                         tiny_attrib.vertices[3 * idx.vertex_index + 0], 
+                        -tiny_attrib.vertices[3 * idx.vertex_index + 2], // Z becomes inverted Y
+                         tiny_attrib.vertices[3 * idx.vertex_index + 1]  // Y becomes Z (Up)
+                    ));
+                    
+                    if (idx.normal_index >= 0) {
+                        parsed_node.mesh.normals.push_back(glm::vec3(
+                             tiny_attrib.normals[3 * idx.normal_index + 0], 
+                            -tiny_attrib.normals[3 * idx.normal_index + 2], 
+                             tiny_attrib.normals[3 * idx.normal_index + 1]
+                        ));
+                    }
+                    
+                    /*
+                    // Standard loading
+                    parsed_node.mesh.positions.push_back(glm::vec3(
                         tiny_attrib.vertices[3 * idx.vertex_index + 0], 
                         tiny_attrib.vertices[3 * idx.vertex_index + 1], 
                         tiny_attrib.vertices[3 * idx.vertex_index + 2]
                     ));
-                    
-                    // Normals
+
                     if (idx.normal_index >= 0) {
-                        parsed_shape.mesh.normals.push_back(glm::vec3(
+                        parsed_node.mesh.normals.push_back(glm::vec3(
                             tiny_attrib.normals[3 * idx.normal_index + 0], 
                             tiny_attrib.normals[3 * idx.normal_index + 1], 
                             tiny_attrib.normals[3 * idx.normal_index + 2]
                         ));
                     }
+                    */
                     
-                    // UVs (Inverted Y coordinate for standard texture mapping)
                     if (idx.texcoord_index >= 0) {
-                        parsed_shape.mesh.uvs.push_back(glm::vec2(
+                        parsed_node.mesh.uvs.push_back(glm::vec2(
                             tiny_attrib.texcoords[2 * idx.texcoord_index + 0], 
                             1.0f - tiny_attrib.texcoords[2 * idx.texcoord_index + 1]
                         ));
                     }
                     
-                    // Colors
                     if (!tiny_attrib.colors.empty()) {
-                        parsed_shape.mesh.colors.push_back(glm::vec4(
+                        parsed_node.mesh.colors.push_back(glm::vec4(
                             tiny_attrib.colors[3 * idx.vertex_index + 0], 
                             tiny_attrib.colors[3 * idx.vertex_index + 1], 
                             tiny_attrib.colors[3 * idx.vertex_index + 2], 
@@ -163,7 +189,7 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
                     }
                 }
                 
-                parsed_shape.mesh.indices.push_back(unique_vertices[tuple]);
+                parsed_node.mesh.indices.push_back(unique_vertices[tuple]);
                 current_index_count++;
             }
             index_offset += fv;
@@ -171,14 +197,15 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
 
         // Push the final sub-mesh material group
         if (current_index_count > 0) {
-            parsed_shape.mesh.materials.push_back({
+            parsed_node.mesh.materials.push_back({
                 current_index_offset, 
                 current_index_count, 
                 static_cast<entt::entity>(current_material_id)
             });
         }
         
-        scene.shapes.push_back(std::move(parsed_shape));
+        // Push the fully assembled node to the root
+        scene.root_nodes.push_back(std::move(parsed_node));
     }
 
     return scene;
@@ -213,10 +240,4 @@ IOPrefab LoadPrefab(const std::string& filepath) {
 
 
 } // namespace rrl::io
-
-
-
-
-
-
 

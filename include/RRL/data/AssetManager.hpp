@@ -128,5 +128,17 @@ void BindUITexture(entt::registry& registry, entt::entity ui_object, entt::entit
 void UpdateUILayout(entt::registry& registry, entt::entity ui_object, float screen_x, float screen_y, float screen_w, float screen_h);
 
 
+// --- GB Interface ------------------------------------------------
+/**
+ * @brief Manually increments an asset's reference counter to keep it alive.
+ */
+void IncrementAssetRef(entt::registry& registry, entt::entity asset);
+
+/**
+ * @brief Manually decrements an asset's reference counter. 
+ * If it hits 0 and the policy is CASCADE_DELETE, it is destroyed.
+ */
+void DecrementAssetRef(entt::registry& registry, entt::entity asset);
+
 
 } // namespace rrl::data
