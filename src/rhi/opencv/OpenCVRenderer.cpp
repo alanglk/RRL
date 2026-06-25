@@ -114,11 +114,15 @@ static void RasterizeTriangle(
                     glm::vec4 final_color = mat_base_color * vertex_color;
                     
                     // Debug texture mapping / UVs
-                    if (!active_albedo || active_albedo->empty()) {
-                        final_color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
-                    } else if (mesh.uvs.empty()) {
-                        final_color = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+                    #ifdef RHI_DEBUG_RENDERING
+                    if (enable_textures) {
+                        if (!active_albedo || active_albedo->empty()) {
+                            final_color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);    // Red
+                        } else if (mesh.uvs.empty()) {
+                            final_color = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);    // Blue
+                        }
                     }
+                    #endif
 
                     // Execute Texture Atlas Lookup
                     if (enable_textures && active_albedo && !active_albedo->empty() && !mesh.uvs.empty()) {
@@ -224,19 +228,14 @@ static void RenderFrame(entt::registry& registry) {
             const auto& world_tf = mesh_view.get<tf::TFWorldTransformComponent>(physical_entity);
             const auto& linkage = mesh_view.get<data::MeshLinkage>(physical_entity);
             
-            // Obtain actual mesh data
             if (!registry.valid(linkage.mesh_asset)) continue;
             if (!registry.all_of<data::MeshRuntimeComponent>(linkage.mesh_asset)) continue;
             MeshHandle mesh_handle = registry.get<data::MeshRuntimeComponent>(linkage.mesh_asset).handle;
             if (ctx.meshes.find(mesh_handle) == ctx.meshes.end()) continue;
             const auto& mesh = ctx.meshes[mesh_handle];
 
-            // Pre-compute the final Model-View-Projection (MVP) matrix
             glm::mat4 mvp = cam_rt.view_projection_matrix * world_tf.matrix;
 
-            
-
-            // Lambda to project a 3D point in Local Coordinate System (LCS) to 2D pixel coordinates
             auto project_vertex = [&](const glm::vec3& local_pos) -> cv::Point {
                 glm::vec4 clip_space = mvp * glm::vec4(local_pos, 1.0f);
                 if (clip_space.w <= 0.0001f) return cv::Point(-1, -1);
@@ -244,127 +243,131 @@ static void RenderFrame(entt::registry& registry) {
                 return cv::Point(static_cast<int>((ndc.x + 1.0f) * half_w), static_cast<int>((1.0f - ndc.y) * half_h));
             };
 
-            
-            // Resolve materials and textures
-            glm::vec4 mat_base_color(1.0f, 1.0f, 1.0f, 1.0f);
-            cv::Mat* active_albedo = nullptr;
-            if (!mesh.materials.empty()) {
-                entt::entity mat_entity = mesh.materials[0].material_entity;
-                if (registry.valid(mat_entity) && registry.all_of<data::MaterialRuntimeComponent>(mat_entity)) {
-                    // Resolve material
-                    MaterialHandle mat_handle = registry.get<data::MaterialRuntimeComponent>(mat_entity).handle;
-                    if (ctx.materials.find(mat_handle) != ctx.materials.end()) {
-                        mat_base_color = ctx.materials[mat_handle].base_color;
-                    }
-                    
-                    // Resolve texture
-                    const auto& mat_data = registry.get<data::MaterialData>(mat_entity);
-                    if (registry.valid(mat_data.albedo_map) && registry.all_of<data::TextureRuntimeComponent>(mat_data.albedo_map)) {
-                        TextureHandle tex_handle = registry.get<data::TextureRuntimeComponent>(mat_data.albedo_map).handle;
-                        if (ctx.textures.find(tex_handle) != ctx.textures.end()) {
-                            active_albedo = &ctx.textures[tex_handle];
-                        }
-                    }
-                }
-            }
-
-            // Lambda to blend base colors and raw vertex color attribs
-            auto get_blended_flat_color = [&](const std::vector<uint32_t>& v_indices) -> cv::Scalar {
-                glm::vec4 v_color(1.0f, 1.0f, 1.0f, 1.0f); 
-                
-                if (!mesh.colors.empty()) {
-                    v_color = glm::vec4(0.0f);
-                    for (uint32_t idx : v_indices) {
-                        if (idx < mesh.colors.size()) {
-                            v_color += glm::vec4(mesh.colors[idx].x, mesh.colors[idx].y, mesh.colors[idx].z, 1.0f);
-                        } else {
-                            v_color += glm::vec4(1.0f);
-                        }
-                    }
-                    v_color /= static_cast<float>(v_indices.size()); 
-                }
-                
-                glm::vec4 final_color = mat_base_color * v_color;
-                return cv::Scalar(
-                    static_cast<int>(std::clamp(final_color.b * 255.0f, 0.0f, 255.0f)), // B
-                    static_cast<int>(std::clamp(final_color.g * 255.0f, 0.0f, 255.0f)), // G
-                    static_cast<int>(std::clamp(final_color.r * 255.0f, 0.0f, 255.0f))  // R
-                );
-            };
-
-            
             // Point Cloud Rasterization
             if (mesh.topology == data::MeshTopology::POINTS) {
                 for (size_t i = 0; i < mesh.positions.size(); ++i) {
                     cv::Point p = project_vertex(mesh.positions[i]);
-                    
                     if (p.x >= 0 && p.x < render_target.cols && p.y >= 0 && p.y < render_target.rows) {
-                        cv::Scalar final_color = get_blended_flat_color({ static_cast<uint32_t>(i) });
-                        cv::circle(render_target, p, 2, final_color, -1);
+                        cv::circle(render_target, p, 2, cv::Scalar(255, 255, 255), -1);
                     }
                 }
+                continue; // Skip the indexed rendering below
             }
-            // Triangles and Lines Rasterization
-            else if ((mesh.topology == data::MeshTopology::TRIANGLES || mesh.topology == data::MeshTopology::LINES) 
-                     && !mesh.indices.empty()) 
-            {
-                size_t step = (mesh.topology == data::MeshTopology::TRIANGLES) ? 3 : 2;
-                
-                bool enable_texture_mapping = false; 
-                #ifdef RHI_TEXTURE_MAPPING
-                enable_texture_mapping = true; 
-                #endif 
+            
+            // Lines and Triangles Rasterization
+            else if (
+                (mesh.topology == data::MeshTopology::TRIANGLES || mesh.topology == data::MeshTopology::LINES) 
+                && !mesh.indices.empty()
+            ) {
 
-                for (size_t i = 0; i < mesh.indices.size(); i += step) {
+                // Fallback for primitive shapes that lack material definitions
+                std::vector<data::MeshMaterial> default_submesh;
+                const std::vector<data::MeshMaterial>* active_submeshes = &mesh.materials;
+
+                if (mesh.materials.empty()) {
+                    default_submesh.push_back({0, static_cast<uint32_t>(mesh.indices.size()), entt::null});
+                    active_submeshes = &default_submesh;
+                }
+
+                // Iterate through every material group and draw its specific geometry chunk
+                for (const auto& submesh : *active_submeshes) {
+                    glm::vec4 mat_base_color(1.0f, 1.0f, 1.0f, 1.0f);
+                    cv::Mat* active_albedo = nullptr;
                     
-                    // Triangles Pipeline
-                    if (step == 3 && i + 2 < mesh.indices.size()) {
-                        uint32_t i0 = mesh.indices[i];
-                        uint32_t i1 = mesh.indices[i + 1];
-                        uint32_t i2 = mesh.indices[i + 2];
+                    // Resolve Material strictly for this submesh
+                    if (registry.valid(submesh.material_entity) && registry.all_of<data::MaterialRuntimeComponent>(submesh.material_entity)) {
+                        MaterialHandle mat_handle = registry.get<data::MaterialRuntimeComponent>(submesh.material_entity).handle;
+                        auto mat_it = ctx.materials.find(mat_handle);
+                        if (mat_it != ctx.materials.end()) {
+                            const auto& mat_data = mat_it->second; 
+                            mat_base_color = mat_data.base_color;
+                            
+                            if (registry.valid(mat_data.albedo_map) && registry.all_of<data::TextureRuntimeComponent>(mat_data.albedo_map)) {
+                                TextureHandle tex_handle = registry.get<data::TextureRuntimeComponent>(mat_data.albedo_map).handle;
+                                auto tex_it = ctx.textures.find(tex_handle);
+                                if (tex_it != ctx.textures.end()) active_albedo = &tex_it->second;
+                            }
+                        }
+                    }
 
-                        // Compute Clip-space positions for near plane guards and perspective math
-                        glm::vec4 c0 = mvp * glm::vec4(mesh.positions[i0], 1.0f);
-                        glm::vec4 c1 = mvp * glm::vec4(mesh.positions[i1], 1.0f);
-                        glm::vec4 c2 = mvp * glm::vec4(mesh.positions[i2], 1.0f);
-
-                        if (c0.w <= 0.001f || c1.w <= 0.001f || c2.w <= 0.001f) continue;
-
-                        // Viewport Projection to Screen space points
-                        glm::vec2 p0((glm::vec3(c0) / c0.w).x + 1.0f, 1.0f - (glm::vec3(c0) / c0.w).y);
-                        glm::vec2 p1((glm::vec3(c1) / c1.w).x + 1.0f, 1.0f - (glm::vec3(c1) / c1.w).y);
-                        glm::vec2 p2((glm::vec3(c2) / c2.w).x + 1.0f, 1.0f - (glm::vec3(c2) / c2.w).y);
-                        
-                        p0 *= glm::vec2(half_w, half_h);
-                        p1 *= glm::vec2(half_w, half_h);
-                        p2 *= glm::vec2(half_w, half_h);
-
-                        #ifdef RHI_DEBUG_RENDERING
-                        // Default to fast, clear wireframe drawing on debug configurations
-                        DrawWireframeTriangle(render_target, p0, p1, p2);
-                        #else
-                        // Execute Software Pipeline with linear depth sorting and optional mapping
-                        RasterizeTriangle(
-                            render_target, depth_buffer, 
-                            c0, c1, c2, p0, p1, p2, 
-                            mesh, i0, i1, i2, 
-                            mat_base_color, active_albedo, enable_texture_mapping
+                    auto get_blended_flat_color = [&](const std::vector<uint32_t>& v_indices) -> cv::Scalar {
+                        glm::vec4 v_color(1.0f, 1.0f, 1.0f, 1.0f); 
+                        if (!mesh.colors.empty()) {
+                            v_color = glm::vec4(0.0f);
+                            for (uint32_t idx : v_indices) {
+                                if (idx < mesh.colors.size()) {
+                                    v_color += glm::vec4(mesh.colors[idx].x, mesh.colors[idx].y, mesh.colors[idx].z, 1.0f);
+                                } else {
+                                    v_color += glm::vec4(1.0f);
+                                }
+                            }
+                            v_color /= static_cast<float>(v_indices.size()); 
+                        }
+                        glm::vec4 final_color = mat_base_color * v_color;
+                        return cv::Scalar(
+                            static_cast<int>(std::clamp(final_color.b * 255.0f, 0.0f, 255.0f)),
+                            static_cast<int>(std::clamp(final_color.g * 255.0f, 0.0f, 255.0f)),
+                            static_cast<int>(std::clamp(final_color.r * 255.0f, 0.0f, 255.0f))
                         );
-                        #endif
-                    } 
-                    // Lines Pipeline
-                    else if (step == 2 && i + 1 < mesh.indices.size()) {
-                        cv::Point p1 = project_vertex(mesh.positions[mesh.indices[i]]);
-                        cv::Point p2 = project_vertex(mesh.positions[mesh.indices[i + 1]]);
+                    };
 
-                        if (p1.x != -1 && p2.x != -1) {
-                            cv::Scalar line_color = get_blended_flat_color({mesh.indices[i], mesh.indices[i+1]});
-                            cv::line(render_target, p1, p2, line_color, 2);
+                    // Loop over the indices belonging to this submesh
+                        size_t step = (mesh.topology == data::MeshTopology::TRIANGLES) ? 3 : 2;
+                        bool enable_texture_mapping = false; 
+                        #ifdef RHI_TEXTURE_MAPPING
+                        enable_texture_mapping = true; 
+                        #endif 
+
+                        // Calculate safe boundaries for this specific chunk
+                        uint32_t start_idx = submesh.index_offset;
+                        uint32_t end_idx = std::min(start_idx + submesh.index_count, static_cast<uint32_t>(mesh.indices.size()));
+
+                        for (size_t i = start_idx; i < end_idx; i += step) {
+                            
+                            // Triangles Pipeline
+                            if (step == 3 && i + 2 < end_idx) {
+                                uint32_t i0 = mesh.indices[i];
+                                uint32_t i1 = mesh.indices[i + 1];
+                                uint32_t i2 = mesh.indices[i + 2];
+
+                                glm::vec4 c0 = mvp * glm::vec4(mesh.positions[i0], 1.0f);
+                                glm::vec4 c1 = mvp * glm::vec4(mesh.positions[i1], 1.0f);
+                                glm::vec4 c2 = mvp * glm::vec4(mesh.positions[i2], 1.0f);
+
+                                if (c0.w <= 0.001f || c1.w <= 0.001f || c2.w <= 0.001f) continue;
+
+                                glm::vec2 p0((glm::vec3(c0) / c0.w).x + 1.0f, 1.0f - (glm::vec3(c0) / c0.w).y);
+                                glm::vec2 p1((glm::vec3(c1) / c1.w).x + 1.0f, 1.0f - (glm::vec3(c1) / c1.w).y);
+                                glm::vec2 p2((glm::vec3(c2) / c2.w).x + 1.0f, 1.0f - (glm::vec3(c2) / c2.w).y);
+                                
+                                p0 *= glm::vec2(half_w, half_h);
+                                p1 *= glm::vec2(half_w, half_h);
+                                p2 *= glm::vec2(half_w, half_h);
+
+                                #ifdef RHI_DEBUG_RENDERING
+                                DrawWireframeTriangle(render_target, p0, p1, p2);
+                                #else
+                                RasterizeTriangle(
+                                    render_target, depth_buffer, 
+                                    c0, c1, c2, p0, p1, p2, 
+                                    mesh, i0, i1, i2, 
+                                    mat_base_color, active_albedo, enable_texture_mapping
+                                );
+                                #endif
+                            } 
+                            // Lines Pipeline
+                            else if (step == 2 && i + 1 < end_idx) {
+                                cv::Point p1 = project_vertex(mesh.positions[mesh.indices[i]]);
+                                cv::Point p2 = project_vertex(mesh.positions[mesh.indices[i + 1]]);
+
+                                if (p1.x != -1 && p2.x != -1) {
+                                    cv::Scalar line_color = get_blended_flat_color({mesh.indices[i], mesh.indices[i+1]});
+                                    cv::line(render_target, p1, p2, line_color, 2);
+                                }
+                            }
                         }
                     }
                 }
-            }
-
         }
     }
 

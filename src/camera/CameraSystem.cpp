@@ -3,7 +3,9 @@
 #include "RRL/camera/CameraSystem.hpp"
 #include "RRL/camera/CameraComponents.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
+
 #include "RRL/tf/TFComponents.hpp"
+#include "RRL/tf/TransformTree.hpp"
 
 #include <FLogging/FLogging.hpp>
 
@@ -14,13 +16,6 @@ namespace rrl::camera {
     
 
 // Matrix to map ISO 8855 (X-front, Y-left, Z-up) 
-// //  to OpenCV CCS (X-right, Y-down, Z-front)
-// constexpr glm::mat4 LCS_TO_CCS = glm::mat4(
-//     0.0f,  0.0f,  1.0f,  0.0f,
-//    -1.0f,  0.0f,  0.0f,  0.0f,
-//     0.0f, -1.0f,  0.0f,  0.0f,
-//     0.0f,  0.0f,  0.0f,  1.0f
-// );
 // to standard OpenGL View Space (X-right, Y-up, Z-backward)
 constexpr glm::mat4 LCS_TO_CCS = glm::mat4(
     0.0f,  0.0f, -1.0f,  0.0f, 
@@ -28,6 +23,21 @@ constexpr glm::mat4 LCS_TO_CCS = glm::mat4(
     0.0f,  1.0f,  0.0f,  0.0f, 
     0.0f,  0.0f,  0.0f,  1.0f
 );
+
+
+
+// --- Helpers -----------------------------------------------------
+static glm::quat CalculateLookAtRotation(const glm::vec3& eye, const glm::vec3& target, const glm::vec3& world_up) {
+    glm::vec3 forward = target - eye;
+    if (glm::length(forward) < 0.0001f) return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    
+    forward = glm::normalize(forward);
+    glm::vec3 left = glm::normalize(glm::cross(world_up, forward));
+    glm::vec3 true_up = glm::cross(forward, left);
+    
+    return glm::quat_cast(glm::mat3(forward, left, true_up));
+}
+
 
 
 // --- Camera Runtime ----------------------------------------------
@@ -123,8 +133,7 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
 
 
 // --- Lifecycle ---------------------------------------------------
-void AddCamera(entt::registry& registry, entt::entity entity, const CameraModelVariant& model, rhi::RenderTargetHandle target_fbo) {
-    RRL_ASSERT_NOT_HAS_COMPONENT(registry, entity, CameraComponent, "AddCamera failed: Entity already has a CameraComponent!");
+entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& model, rhi::RenderTargetHandle target_fbo) {
 
     // Ensure no other camera points to the same target_fbo (ignoring TARGET_NULL)
     auto view = registry.view<CameraComponent>();
@@ -137,56 +146,78 @@ void AddCamera(entt::registry& registry, entt::entity entity, const CameraModelV
             cam.target_fbo = rhi::TARGET_NULL;  
         }
     }
-
+    
+    // Add default root transform
+    entt::entity entity = registry.create();
+    tf::AddTransform(registry, entity);
+    
     // intrinsic_dirty is true by default in the struct.
     registry.emplace<CameraComponent>(entity, model, target_fbo, true);
+    
+    return entity;
 }
-
-void RemoveCamera(entt::registry& registry, entt::entity entity) {
-    RRL_ASSERT_HAS_COMPONENT(registry, entity, CameraComponent, "RemoveCamera failed: Entity lacks a CameraComponent!");
-    
-    registry.remove<CameraComponent>(entity);
-    
-    // Clean up the runtime cache so we don't leak memory or leave stale matrix data
-    if (registry.all_of<CameraRuntimeComponent>(entity)) {
-        registry.remove<CameraRuntimeComponent>(entity);
+void DestroyCamera(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "DestroyCamera failed: Entity lacks a CameraComponent!");
+    if (registry.valid(cam_entity)) {
+        registry.destroy(cam_entity);
+    }
+}
+void DestroyAllCameras(entt::registry& registry) {
+    // Copy to avoid iterator invalidation during destruction 
+    std::vector<entt::entity> cameras = GetAllCameras(registry);
+    for (auto e : cameras) {
+        DestroyCamera(registry, e);
     }
 }
 
 
 
 // --- Setters -----------------------------------------------------
-void SetCameraModel(entt::registry& registry, entt::entity entity, const CameraModelVariant& model) {
-    RRL_ASSERT_HAS_COMPONENT(registry, entity, CameraComponent, "SetCameraModel failed: Entity lacks a CameraComponent!");
+void SetCameraModel(entt::registry& registry, entt::entity cam_entity, const CameraModelVariant& model) {
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraModel failed: Entity lacks a CameraComponent!");
     
-    auto& cam = registry.get<CameraComponent>(entity);
+    auto& cam = registry.get<CameraComponent>(cam_entity);
     cam.model = model;
     cam.intrinsic_dirty = true; // Triggers the projection rebuild on the next tick
 }
-void SetPrimaryCamera(entt::registry& registry, entt::entity entity) {
-    SetCameraTarget(registry, entity, rhi::TARGET_MAIN);
+void SetPrimaryCamera(entt::registry& registry, entt::entity cam_entity) {
+    SetCameraTarget(registry, cam_entity, rhi::TARGET_MAIN);
 }
-void SetCameraTarget(entt::registry& registry, entt::entity entity, rhi::RenderTargetHandle target_fbo) {
-    RRL_ASSERT_HAS_COMPONENT(registry, entity, CameraComponent, "SetCameraTarget failed: Entity lacks a CameraComponent!");
+void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::RenderTargetHandle target_fbo) {
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraTarget failed: Entity lacks a CameraComponent!");
     
     // Ensure no other camera points to the same target_fbo (ignoring TARGET_NULL)
     auto view = registry.view<CameraComponent>();
     for (auto e : view) {
         auto& cam = view.get<CameraComponent>(e);
-        if (e == entity) {
+        if (e == cam_entity) {
             cam.target_fbo = target_fbo;        // Set the target entity to draw to the screen
         } else if (cam.target_fbo == target_fbo) {
             cam.target_fbo = rhi::TARGET_NULL;  // If any other camera was drawing to the same target, strip its target
         }
     }
 }
+void SetCameraPositionAndLookAt(entt::registry& registry, entt::entity cam_entity, const glm::vec3& pos, const glm::vec3& target, const glm::vec3& world_up) {
+    glm::quat rotation = CalculateLookAtRotation(pos, target, world_up);
+    tf::SetLocalPosition(registry, cam_entity, pos);
+    tf::SetLocalRotation(registry, cam_entity, rotation);
+}
+void SetCameraLookAt(entt::registry& registry, entt::entity cam_entity, const glm::vec3& target, const glm::vec3& world_up) {
+    glm::vec3 current_pos = tf::GetLocalPosition(registry, cam_entity);
+    glm::quat rotation = CalculateLookAtRotation(current_pos, target, world_up);
+    tf::SetLocalRotation(registry, cam_entity, rotation);
+}
 
 
 
 // --- Getters -----------------------------------------------------
-CameraModelVariant GetCameraModel(entt::registry& registry, entt::entity entity) {
-    RRL_ASSERT_HAS_COMPONENT(registry, entity, CameraComponent, "GetCameraModel failed: Entity lacks a CameraComponent!");
-    return registry.get<CameraComponent>(entity).model;
+std::vector<entt::entity> GetAllCameras(entt::registry& registry) {
+    auto view = registry.view<CameraComponent>();
+    return std::vector<entt::entity>(view.begin(), view.end());
+}
+CameraModelVariant GetCameraModel(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "GetCameraModel failed: Entity lacks a CameraComponent!");
+    return registry.get<CameraComponent>(cam_entity).model;
 }
 entt::entity GetPrimaryCamera(entt::registry& registry) {
     auto view = registry.view<CameraComponent>();
@@ -197,17 +228,17 @@ entt::entity GetPrimaryCamera(entt::registry& registry) {
     }
     return entt::null;
 }
-const glm::mat4& GetViewMatrix(entt::registry& registry, entt::entity entity) {
-    RRL_ASSERT_HAS_COMPONENT(registry, entity, CameraRuntimeComponent, "GetViewMatrix failed: Entity lacks a CameraRuntimeComponent!");
-    return registry.get<CameraRuntimeComponent>(entity).view_matrix;
+const glm::mat4& GetViewMatrix(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraRuntimeComponent, "GetViewMatrix failed: Entity lacks a CameraRuntimeComponent!");
+    return registry.get<CameraRuntimeComponent>(cam_entity).view_matrix;
 }
-const glm::mat4& GetProjectionMatrix(entt::registry& registry, entt::entity entity) {
-    RRL_ASSERT_HAS_COMPONENT(registry, entity, CameraRuntimeComponent, "GetProjectionMatrix failed: Entity lacks a CameraRuntimeComponent!");
-    return registry.get<CameraRuntimeComponent>(entity).projection_matrix;
+const glm::mat4& GetProjectionMatrix(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraRuntimeComponent, "GetProjectionMatrix failed: Entity lacks a CameraRuntimeComponent!");
+    return registry.get<CameraRuntimeComponent>(cam_entity).projection_matrix;
 }
-const glm::mat4& GetViewProjectionMatrix(entt::registry& registry, entt::entity entity) {
-    RRL_ASSERT_HAS_COMPONENT(registry, entity, CameraRuntimeComponent, "GetViewProjectionMatrix failed: Entity lacks a CameraRuntimeComponent!");
-    return registry.get<CameraRuntimeComponent>(entity).view_projection_matrix;
+const glm::mat4& GetViewProjectionMatrix(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraRuntimeComponent, "GetViewProjectionMatrix failed: Entity lacks a CameraRuntimeComponent!");
+    return registry.get<CameraRuntimeComponent>(cam_entity).view_projection_matrix;
 }
 
 

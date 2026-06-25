@@ -50,12 +50,9 @@ protected:
 // --- Lifecycle ---------------------------------------------------
 
 TEST_F(CameraModuleTest, PrimaryCameraManagement) {
-    auto cam1 = registry.create();
-    auto cam2 = registry.create();
-
-    // Add cam1 as primary, cam2 as secondary
-    camera::AddCamera(registry, cam1, camera::PerspectiveModel{}, true);
-    camera::AddCamera(registry, cam2, camera::PerspectiveModel{}, false);
+    // New API automatically creates entities and registers components
+    auto cam1 = camera::SpawnCamera(registry, camera::PerspectiveModel{}, rhi::TARGET_MAIN);
+    auto cam2 = camera::SpawnCamera(registry, camera::PerspectiveModel{}, rhi::TARGET_NULL);
 
     EXPECT_EQ(camera::GetPrimaryCamera(registry), cam1);
 
@@ -63,13 +60,12 @@ TEST_F(CameraModuleTest, PrimaryCameraManagement) {
     camera::SetPrimaryCamera(registry, cam2);
 
     EXPECT_EQ(camera::GetPrimaryCamera(registry), cam2);
-    // Ensure cam1 was automatically unset
+    // Ensure cam1 was automatically unset by the internal target manager
     EXPECT_NE(camera::GetPrimaryCamera(registry), cam1); 
 }
 
 TEST_F(CameraModuleTest, ModelUpdatingAndRetrieval) {
-    auto entity = registry.create();
-    camera::AddCamera(registry, entity, camera::PerspectiveModel{});
+    auto entity = camera::SpawnCamera(registry, camera::PerspectiveModel{});
 
     // Retrieve copy, modify, and set
     auto variant = camera::GetCameraModel(registry, entity);
@@ -91,11 +87,10 @@ TEST_F(CameraModuleTest, ModelUpdatingAndRetrieval) {
 // --- View Math ---------------------------------------------------
 
 TEST_F(CameraModuleTest, ViewMatrixLCS_to_CCS_Translation) {
-    auto cam_entity = registry.create();
+    auto cam_entity = camera::SpawnCamera(registry);
     
     // World Position: Z = 5 (Up in ISO 8855)
-    tf::AddTransform(registry, cam_entity, glm::vec3(0.0f, 0.0f, 5.0f));
-    camera::AddCamera(registry, cam_entity);
+    tf::SetLocalPosition(registry, cam_entity, glm::vec3(0.0f, 0.0f, 5.0f));
 
     tf::UpdateTransformTree(registry);
     camera::UpdateCameras(registry, test_ndc);
@@ -105,11 +100,11 @@ TEST_F(CameraModuleTest, ViewMatrixLCS_to_CCS_Translation) {
 
     // Inverse world translation is (0, 0, -5).
     // Mapping LCS to CCS:
-    // CCS X (Right) = LCS -Y (0)
-    // CCS Y (Down)  = LCS -Z (-(-5) = 5)
-    // CCS Z (Front) = LCS +X (0)
+    // CCS X (Right) = LCS -Y = 0
+    // CCS Y (Up)    = LCS +Z = -5.0f
+    // CCS Z (Back)  = LCS -X = 0
     EXPECT_FLOAT_EQ(ccs_pos.x, 0.0f);
-    EXPECT_FLOAT_EQ(ccs_pos.y, 5.0f);
+    EXPECT_FLOAT_EQ(ccs_pos.y, -5.0f);
     EXPECT_FLOAT_EQ(ccs_pos.z, 0.0f);
 }
 
@@ -118,11 +113,8 @@ TEST_F(CameraModuleTest, ViewMatrixLCS_to_CCS_Translation) {
 // --- Projection Math ---------------------------------------------
 
 TEST_F(CameraModuleTest, ProjectionUpdatesOnModelChange) {
-    auto cam_entity = registry.create();
-    tf::AddTransform(registry, cam_entity);
+    auto cam_entity = camera::SpawnCamera(registry, camera::PerspectiveModel{});
     
-    // Start with Perspective
-    camera::AddCamera(registry, cam_entity, camera::PerspectiveModel{});
     tf::UpdateTransformTree(registry);
     camera::UpdateCameras(registry, test_ndc);
     
@@ -134,18 +126,15 @@ TEST_F(CameraModuleTest, ProjectionUpdatesOnModelChange) {
     
     glm::mat4 ortho_proj = camera::GetProjectionMatrix(registry, cam_entity);
 
-    // The projection matrix should have been rebuilt and be mathematically different
+    // The projection matrix should have been rebuilt 
     EXPECT_FALSE(MatricesAreNear(perspective_proj, ortho_proj));
 }
 
 TEST_F(CameraModuleTest, PinholeDepthMapping) {
-    auto cam_entity = registry.create();
-    tf::AddTransform(registry, cam_entity);
-    
     camera::PinholeModel pinhole;
     pinhole.z_near = 1.0f;
     pinhole.z_far = 100.0f;
-    camera::AddCamera(registry, cam_entity, pinhole);
+    auto cam_entity = camera::SpawnCamera(registry, pinhole);
 
     tf::UpdateTransformTree(registry);
     
@@ -169,14 +158,15 @@ TEST_F(CameraModuleTest, PinholeDepthMapping) {
 
 TEST_F(CameraModuleTest, CameraInheritsParentMovement) {
     auto drone = registry.create();
-    auto camera = registry.create();
-
     // Drone at X = 10
-    tf::AddTransform(registry, drone, glm::vec3(10.0f, 0.0f, 0.0f));
+    tf::AddTransform(registry, drone, glm::vec3(10.0f, 0.0f, 0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(1.0f));
     
-    // Camera mounted Z = 2 (above the drone)
-    tf::AddTransform(registry, camera, drone, glm::vec3(0.0f, 0.0f, 2.0f));
-    camera::AddCamera(registry, camera);
+    // Spawn camera using new API
+    auto camera = camera::SpawnCamera(registry);
+    
+    // Mount the camera Z = 2 (above the drone)
+    tf::AttachChild(registry, drone, camera, tf::TFDependencyPolicy::CASCADE_DELETE);
+    tf::SetLocalPosition(registry, camera, glm::vec3(0.0f, 0.0f, 2.0f));
 
     // Initial tick
     tf::UpdateTransformTree(registry);
@@ -186,12 +176,12 @@ TEST_F(CameraModuleTest, CameraInheritsParentMovement) {
     glm::vec3 initial_ccs_pos = ExtractPosition(initial_view);
 
     // World = (10, 0, 2). Inverse = (-10, 0, -2).
-    // CCS mapping: X = -Y(0), Y = -Z(2), Z = +X(-10)
+    // CCS mapping: X = -Y, Y = Z, Z = -X
     EXPECT_FLOAT_EQ(initial_ccs_pos.x, 0.0f);
-    EXPECT_FLOAT_EQ(initial_ccs_pos.y, 2.0f);
-    EXPECT_FLOAT_EQ(initial_ccs_pos.z, -10.0f);
+    EXPECT_FLOAT_EQ(initial_ccs_pos.y, -2.0f);
+    EXPECT_FLOAT_EQ(initial_ccs_pos.z, 10.0f);
 
-    // --- Move the Drone ---
+    // Move the Drone
     tf::SetLocalPosition(registry, drone, glm::vec3(20.0f, 0.0f, 0.0f));
     
     // Tick again
@@ -202,6 +192,7 @@ TEST_F(CameraModuleTest, CameraInheritsParentMovement) {
     glm::vec3 new_ccs_pos = ExtractPosition(new_view);
 
     // World is now (20, 0, 2). Inverse = (-20, 0, -2).
-    // CCS Z = +X = -20
-    EXPECT_FLOAT_EQ(new_ccs_pos.z, -20.0f);
+    // CCS Z (Back) = LCS -X
+    // Since X is -20, CCS Z becomes +20
+    EXPECT_FLOAT_EQ(new_ccs_pos.z, 20.0f);
 }

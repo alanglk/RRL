@@ -194,18 +194,9 @@ public:
         camera_model.z_near = 1.0f;     
         camera_model.z_far = 4000.0f;   
 
-        glm::vec3 cam_pos(1.5f, 0.0f, 1.5f); // Placed slightly forward (+X) and up (+Z) on the mast
-        glm::vec3 target(5.0f, 0.0f, 1.5f);  // Looking straight ahead
-        glm::vec3 forward = glm::normalize(target - cam_pos); 
-        glm::vec3 world_up(0.0f, 0.0f, 1.0f); // ISO 8855 Up
-        glm::vec3 left = glm::normalize(glm::cross(world_up, forward));
-        glm::vec3 true_up = glm::cross(forward, left);
-        glm::mat3 basis(forward, left, true_up);
-        glm::quat cam_rot = glm::quat_cast(basis);
+        robot_cam = rrl::camera::SpawnCamera(registry, camera_model);
+        rrl::camera::SetCameraPositionAndLookAt(registry, robot_cam, {1.5f, 0.0f, 1.5f}, {5.0f, 0.0f, 1.5f});
 
-        rrl::tf::AddTransform(registry, robot_cam, robot_instance, cam_pos, cam_rot, glm::vec3(1.0f));
-        rrl::camera::AddCamera(registry, robot_cam, camera_model, cam_target);
-        
         // Frustum Screen
         std::string fbo_id = "fbo_mirror_" + std::to_string(static_cast<uint32_t>(robot_instance));
         rrl::data::ImageData fbo_image_model;
@@ -248,8 +239,7 @@ public:
 int main() {
     flogging::AddConsoleSink();
     flogging::InitLogger(flogging::LogLevel::Debug, flogging::BackendType::StdFormat);
-    entt::registry registry;
-    LOG_INFO("Running Robot on OpenCV Backend");
+    LOG_INFO("[RRL Engine] Running Robot on OpenCV Backend");
 
     uint32_t window_w       = 1280;
     uint32_t window_h       = 720;
@@ -257,61 +247,53 @@ int main() {
     uint32_t robot_cam_h    = 360;
 
     // Initialize Systems
+    LOG_INFO("[RRL Engine] Booting subsystems...");
+    entt::registry registry;
     rrl::data::InitializeAssetManager(registry);
     rrl::tf::RegisterTFActions(registry);
     rrl::scene::InitializeSceneManager(registry);
-
     if (!rrl::rhi::LoadBackend(rrl::rhi::RHIBackendType::OPENCV, registry)) {
-        LOG_ERROR("Failed to load OpenCV RHI backend!");
+        LOG_ERROR("[RRL Engine] Failed to load OpenCV RHI backend!");
         return -1;
     }
-    rrl::rhi::RHIConfig config{ window_w, window_h, "RRL - Rungholt Instancing Viewer", rrl::rhi::RHIRenderingMode::WINDOW };
-    rrl::rhi::Initialize(registry, config);
-
+    rrl::rhi::RHIConfig config{ window_w, window_h, "RRL - Robot Simulation", rrl::rhi::RHIRenderingMode::WINDOW };
+    if (!rrl::rhi::Initialize(registry, config)) {
+        LOG_ERROR("[RRL Engine] Failed to initialize RHI backend!");
+        return -1;
+    }
 
 
     // Create and spawn the Robot
-    LOG_INFO("Spawning robot...");
+    LOG_INFO("[RRL Engine] Spawning robot...");
     auto robot = Robot();
     robot.Initialize(registry, robot_cam_w, robot_cam_h);
 
     // Setup World objects
-    LOG_INFO("Loading city assets...");
-    rrl::io::IOPrefab rungholt_data = rrl::io::LoadPrefab("assets/models/rungholt/house.obj");
-    rrl::scene::PreloadPrefabBlueprint(registry, "rungholt_city", std::move(rungholt_data));
-    entt::entity city_instance = rrl::scene::SpawnPrefab(registry, "rungholt_city");
-    rrl::tf::SetLocalPosition(registry, city_instance, glm::vec3(5.0f, 0.0f, 0.0f));
-    rrl::tf::SetLocalScale(registry, city_instance, glm::vec3(0.1f));
-
+    LOG_INFO("[RRL Engine] Loading assets...");
+    rrl::io::IOPrefab alien_data = rrl::io::LoadPrefab("assets/models/space_kit/Models/OBJ format/alien.obj");
+    rrl::scene::PreloadPrefabBlueprint(registry, "alien", std::move(alien_data));
+    entt::entity alien = rrl::scene::SpawnPrefab(registry, "alien");
+    rrl::tf::SetLocalPosition(registry, alien, glm::vec3(5.0f, 0.0f, 0.0f));
+    rrl::tf::SetLocalScale(registry, alien, glm::vec3(5.0f));
 
     // Setup Main Camera
-    LOG_INFO("Creating main camera");
-    entt::entity main_cam = registry.create();
-    rrl::camera::PerspectiveModel main_cam_model;
-    main_cam_model.fov_y_radians = glm::radians(75.0f);
-    main_cam_model.aspect_ratio = static_cast<float>(config.width) / static_cast<float>(config.height);
-    main_cam_model.z_near = 0.1f;     
-    main_cam_model.z_far = 1000.0f;  
-
-    glm::vec3 mcam_pos(-10.0f, 0.0f, 8.0f);
-    glm::vec3 mcam_target(0.0f, 0.0f, 0.0f); // Lock onto the origin!
-    glm::vec3 mcam_forward = glm::normalize(mcam_target - mcam_pos);
-    glm::vec3 mcam_up(0.0f, 0.0f, 1.0f);
-    glm::vec3 mcam_left = glm::normalize(glm::cross(mcam_up, mcam_forward));
-    glm::vec3 mcam_true_up = glm::cross(mcam_forward, mcam_left);
-    glm::quat mcam_rot = glm::quat_cast(glm::mat3(mcam_forward, mcam_left, mcam_true_up));
-
-    rrl::tf::AddTransform(registry, main_cam, mcam_pos, mcam_rot);
-    rrl::camera::AddCamera(registry, main_cam, main_cam_model);
-
+    rrl::camera::PerspectiveModel camera_model;
+    camera_model.fov_y_radians = glm::radians(60.0f);
+    camera_model.aspect_ratio = float(config.width) / float(config.height);
+    camera_model.z_near = 1.0f;     
+    camera_model.z_far = 1000.0f;   
+    entt::entity main_camera = rrl::camera::SpawnCamera(registry, camera_model);
+    rrl::camera::SetCameraPositionAndLookAt(registry, main_camera, {-10.0f, 0.0f, 5.0f}, {0.0f, 0.0f, 0.0f});
+    
 
     // Main Loop
-    LOG_INFO("Entering main loop...");
+    LOG_INFO("[RRL Engine] Entering main loop...");
     float rotation_z = 0.0f;
     while (true) {
         // Dynamically rotate the instance
         rotation_z += 0.02f;
-        rrl::tf::SetLocalRotation(registry, robot.GetInstance(), glm::angleAxis(rotation_z, glm::vec3(0.0f, 0.0f, 1.0f)));
+        // rrl::tf::SetLocalRotation(registry, robot.GetInstance(), glm::angleAxis(rotation_z, glm::vec3(0.0f, 0.0f, 1.0f)));
+        rrl::tf::SetLocalRotation(registry, alien, glm::angleAxis(rotation_z, glm::vec3(0.0f, 0.0f, 1.0f)));
 
 
         // Tick Engine Logic

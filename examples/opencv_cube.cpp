@@ -16,16 +16,13 @@
 #include "RRL/camera/CameraSystem.hpp"
 #include "RRL/data/MeshData.hpp"
 #include "RRL/rhi/RHIAPI.hpp"
-
-
-using namespace rrl;
-
+#include "entt/entity/fwd.hpp"
 
 
 // Helper Function to Create a 3D Cube
-data::MeshData CreateWireframeCube(float size) {
-    data::MeshData mesh;
-    mesh.topology = data::MeshTopology::TRIANGLES;
+rrl::data::MeshData CreateWireframeCube(float size) {
+    rrl::data::MeshData mesh;
+    mesh.topology = rrl::data::MeshTopology::TRIANGLES;
     float h = size * 0.5f;
 
     // 8 Corner Vertices of a Cube (ISO 8855 Coordinate System)
@@ -41,132 +38,97 @@ data::MeshData CreateWireframeCube(float size) {
         2, 3, 7,  2, 7, 6, // Back face
         3, 0, 4,  3, 4, 7  // Left face
     };
-
     return mesh;
 }
 
 
-
-
 int main() {
-    flogging::InitLogger(flogging::LogLevel::Warn, flogging::BackendType::StdFormat);
-    entt::registry registry;
+    flogging::AddConsoleSink();
+    flogging::InitLogger(flogging::LogLevel::Debug, flogging::BackendType::StdFormat);
+    LOG_INFO("[RRL Engine] Running 3D cube rendering on OpenCV Backend");
 
+    uint32_t window_w       = 1280;
+    uint32_t window_h       = 720;
+    uint32_t ui_w           = 256;
+    uint32_t ui_h           = 256;
+
+    // Initialize Systems
     LOG_INFO("[RRL Engine] Booting subsystems...");
-    tf::RegisterTFActions(registry);
-    data::InitializeAssetManager(registry);
-    rhi::LoadBackend(rhi::RHIBackendType::OPENCV, registry);
-
-    rhi::RHIConfig config;
-    config.width = 1024;
-    config.height = 768;
-    config.title = "RRL - OpenCV Architecture Update";
-    config.mode = rhi::RHIRenderingMode::WINDOW;
-
-    if (!rhi::Initialize(registry, config)) {
+    entt::registry registry;
+    rrl::tf::RegisterTFActions(registry);
+    rrl::data::InitializeAssetManager(registry);
+    if (!rrl::rhi::LoadBackend(rrl::rhi::RHIBackendType::OPENCV, registry)) {
+        LOG_ERROR("[RRL Engine] Failed to load OpenCV RHI backend!");
+        return -1;
+    }
+    rrl::rhi::RHIConfig config{ window_w, window_h, "RRL - 3D Mesh + 2D UI", rrl::rhi::RHIRenderingMode::WINDOW };
+    if (!rrl::rhi::Initialize(registry, config)) {
         LOG_ERROR("[RRL Engine] Failed to initialize RHI backend!");
         return -1;
     }
 
-    // --- 3D Asset Creation ---
-    // Generate the raw asset inside the AssetManager storage registry
-    entt::entity cube_asset = data::CreateMesh(registry, "cube_mesh", CreateWireframeCube(2.0f));
 
-    // --- Physical World Object Creation ---
-    // Instantiate a concrete physical object in our 3D space
-    auto cube_world_object = registry.create();
-    tf::AddTransform(registry, cube_world_object, glm::vec3(0.0f, 0.0f, 0.0f));
-    
-    // Explicitly link the physical world instance to our asset geometry database
-    data::BindMesh(registry, cube_world_object, cube_asset);
+    // 3D Cube Creation
+    entt::entity cube_asset = rrl::data::CreateMesh(registry, "cube_mesh", CreateWireframeCube(2.0f));
+    auto cube_obj = registry.create();
+    rrl::tf::AddTransform(registry, cube_obj, glm::vec3(0.0f, 0.0f, 0.0f));
+    rrl::data::BindMesh(registry, cube_obj, cube_asset);
 
-    // --- Pure 2D Display Element Stream Overlay ---
-    // Provision a dynamic runtime texture to play back video frames or UI overlays
-    uint32_t ui_w = 256;
-    uint32_t ui_h = 256;
-    
-    data::ImageData ui_image;
+    // 2D UI Object Creation
+    rrl::data::ImageData ui_image;
     ui_image.width = ui_w;
     ui_image.height = ui_h;
-    ui_image.channels = data::ImageChannelLayout::CH_3;
-    ui_image.data_type = data::ImageDataType::UINT8;
-    // Fixed: Account for 3 channels per pixel to prevent vector out-of-bounds runtime crashes
-    ui_image.data.resize(ui_w * ui_h * 3, 0); 
-    
-    entt::entity ui_texture = data::CreateTexture(registry, "ui_image", std::move(ui_image));
-    
-    // Create a flat screen element entity and attach it via the safe public API
-    entt::entity picture_in_picture_ui = registry.create();
-    data::BindUITexture(registry, picture_in_picture_ui, ui_texture, 0.02f, 0.02f, 0.25f, 0.25f);
+    ui_image.channels = rrl::data::ImageChannelLayout::CH_3;
+    ui_image.data_type = rrl::data::ImageDataType::UINT8;
+    entt::entity ui_texture = rrl::data::CreateTexture(registry, "ui_image", std::move(ui_image));
+    entt::entity ui_obj     = registry.create();
+    rrl::data::BindUITexture(registry, ui_obj, ui_texture, 0.02f, 0.02f, 0.25f, 0.25f);
 
-    // --- Camera Hierarchical Assembly Setup ---
-    // Create a root gimbal mount entity located 6 meters back and 3 meters up
-    auto rig_entity = registry.create();
-    tf::AddTransform(registry, rig_entity, glm::vec3(-6.0f, 0.0f, 3.0f));
-
-    // Create the actual Camera Entity, attached as a child to the rig
-    auto camera_entity = registry.create();
-    tf::AddTransform(registry, camera_entity, rig_entity, glm::vec3(0.0f, 0.0f, 0.0f));
-
-    // Configure and mount the Camera Component as the Primary Screen Output
-    camera::PerspectiveModel camera_model;
+    // Camera Setup
+    rrl::camera::PerspectiveModel camera_model;
     camera_model.fov_y_radians = glm::radians(60.0f);
     camera_model.aspect_ratio = float(config.width) / float(config.height);
     camera_model.z_near = 0.1f;
     camera_model.z_far = 100.0f;
+    entt::entity main_camera = rrl::camera::SpawnCamera(registry, camera_model);
+    rrl::camera::SetCameraPositionAndLookAt(registry, main_camera, {-6.0f, 0.0f, 3.0f}, {0.0f, 0.0f, 0.0f});
 
-    camera::AddCamera(registry, camera_entity, camera_model, rhi::TARGET_MAIN);
 
     // Main loop
     LOG_INFO("[RRL Engine] Entering main loop...");
-    float time = 0.0f;
+    float rotation_z = 0.0f;
     while (true) {
-        time += 0.015f;
 
-        // --- 1. Async Streaming / Simulation Updates ---
-        // Access our texture source component to inject procedurally changing color values (Simulating a dynamic network feed)
-        data::ImageData dynamic_frame;
+        // 3D Cube Rotation Update
+        rotation_z += 0.02f;
+        rrl::tf::SetLocalRotation(registry, cube_obj, glm::angleAxis(rotation_z, glm::vec3(0.0f, 0.0f, 1.0f)));
+
+        // 2D UI Texture Update
+        rrl::data::ImageData dynamic_frame;
         dynamic_frame.width     = ui_w;
         dynamic_frame.height    = ui_h;
-        dynamic_frame.channels  = data::ImageChannelLayout::CH_3;
-        dynamic_frame.data_type = data::ImageDataType::UINT8;
+        dynamic_frame.channels  = rrl::data::ImageChannelLayout::CH_3;
+        dynamic_frame.data_type = rrl::data::ImageDataType::UINT8;
         dynamic_frame.data.resize(ui_w * ui_h * 3);
-
-        uint8_t shift = static_cast<uint8_t>((std::sin(time) * 0.5f + 0.5f) * 255.0f);
+        uint8_t shift = static_cast<uint8_t>((std::sin(rotation_z) * 0.5f + 0.5f) * 255.0f);
         std::fill(dynamic_frame.data.begin(), dynamic_frame.data.end(), shift);
-        data::UpdateTexture(registry, ui_texture, std::move(dynamic_frame));
+        rrl::data::UpdateTexture(registry, ui_texture, std::move(dynamic_frame));
 
-        // Simple orbital logic: Move the rig in a circle around the origin over time
-        float radius = 7.0f;
-        glm::vec3 dynamic_position(std::cos(time) * radius, std::sin(time) * radius, 3.0f);
-        
-        // Calculate orientation pointing toward the origin (ISO 8855: +X is Forward, +Y is Left, +Z is Up)
-        glm::vec3 forward = glm::normalize(glm::vec3(0.0f) - dynamic_position);
-        glm::vec3 up = glm::vec3(0.0f, 0.0f, 1.0f);
-        
-        // In a Right-Handed system: Up x Forward = Left
-        glm::vec3 left = glm::normalize(glm::cross(up, forward)); 
-        glm::vec3 true_up = glm::cross(forward, left);
-        glm::mat3 basis(forward, left, true_up);
-        glm::quat dynamic_rotation = glm::quat_cast(basis);
 
-        // Safely update the local transform components inside the ECS
-        tf::SetLocalPosition(registry, rig_entity, dynamic_position);
-        tf::SetLocalRotation(registry, rig_entity, dynamic_rotation);
-
-        // --- 2. Core Processing Loop Sequence ---
-        tf::UpdateTransformTree(registry);
-        camera::UpdateCameras(registry, camera::NDC_OPENCV);
-        rhi::SyncResources(registry);
-        rhi::RenderFrame(registry);
+        // Tick Engine Logic
+        rrl::tf::UpdateTransformTree(registry);
+        rrl::camera::UpdateCameras(registry, rrl::camera::NDC_OPENCV);
+        rrl::rhi::SyncResources(registry);
+        rrl::rhi::RenderFrame(registry);
 
         // ~60 FPS main loop
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
     // Cleanup
-    data::DestroyAllAssets(registry);
-    rhi::Shutdown(registry);
+    rrl::camera::DestroyAllCameras(registry);
+    rrl::data::DestroyAllAssets(registry);
+    rrl::rhi::Shutdown(registry);
     flogging::ResetLogger();
     return 0;
 }
