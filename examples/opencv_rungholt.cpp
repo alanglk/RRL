@@ -19,7 +19,7 @@
 
 int main() {
     flogging::AddConsoleSink();
-    flogging::InitLogger(flogging::LogLevel::Info, flogging::BackendType::StdFormat);
+    flogging::InitLogger(flogging::LogLevel::Debug, flogging::BackendType::StdFormat);
     entt::registry registry;
     LOG_INFO("Running Rungholt City on OpenCV Backend");
 

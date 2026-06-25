@@ -112,6 +112,13 @@ static void RasterizeTriangle(
                     }
 
                     glm::vec4 final_color = mat_base_color * vertex_color;
+                    
+                    // Debug texture mapping / UVs
+                    if (!active_albedo || active_albedo->empty()) {
+                        final_color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+                    } else if (mesh.uvs.empty()) {
+                        final_color = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
+                    }
 
                     // Execute Texture Atlas Lookup
                     if (enable_textures && active_albedo && !active_albedo->empty() && !mesh.uvs.empty()) {

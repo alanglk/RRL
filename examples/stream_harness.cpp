@@ -102,7 +102,8 @@ int main() {
         base_alloc.color_layout = data::ImageColorLayout::BGR;
         base_alloc.data.resize(STREAM_W * STREAM_H * 3, 0);
         
-        ui_textures[i] = data::CreateTexture(registry, std::move(base_alloc));
+        std::string ui_texture_id = "ui_texture_" + std::to_string(i);
+        ui_textures[i] = data::CreateTexture(registry, ui_texture_id, std::move(base_alloc));
 
         float x_pos = (i % 4) * element_w;
         float y_pos = (i / 4) * element_h;

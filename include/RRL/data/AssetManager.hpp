@@ -17,8 +17,15 @@ namespace rrl::data {
  */
 enum class AssetGCPolicy : uint8_t {
     CASCADE_DELETE = 0,     // Destroy the asset and cascade the deletion
-    KEEP_CACHED_ASSETS = 0  // Keep the asset in memory for future usage
+    KEEP_CACHED_ASSETS = 1  // Keep the asset in memory for future usage
 };
+
+
+// Asset cache identifiers
+using TextureID     = std::string;
+using MeshID        = std::string;
+using MaterialID    = std::string;
+
 
 
 // --- Lifecycle ---------------------------------------------------
@@ -51,43 +58,42 @@ void DestroyAsset(entt::registry& registry, entt::entity asset_entity);
 void DestroyAllAssets(entt::registry& registry);
 
 
+
 // --- Textures ----------------------------------------------------
 /**
- * @brief Loads a texture from disk into the ECS. 
- * Returns the cached entity ID if already loaded.
+ * @brief Checks if a texture already exists in the cache using its unique ID (filepath or virtual name).
+ * Returns entt::null if it doesn't exist.
  */
-entt::entity LoadTextureFromFile(entt::registry& registry, const std::string& filepath);
+entt::entity GetCachedTexture(entt::registry& registry, const TextureID& texture_id);
 /**
- * @brief Creates a texture from an existing ImageData struct.
+ * @brief Creates a texture (handles RHI allocation and uploading).
  * Takes ownership of the data via move semantics to prevent deep copies.
+ * If the texture_id already exists, it gets overrided by a new texture.
  */
-entt::entity CreateTexture(entt::registry& registry, ImageData&& image_data);
-/**
- * @brief Creates an empty dynamic texture buffer (e.g., for video streaming).
- */
-entt::entity CreateTexture(entt::registry& registry, uint32_t width, uint32_t height, 
-                           ImageChannelLayout channels, ImageDataType type = ImageDataType::UINT8);
+entt::entity CreateTexture(entt::registry& registry, const TextureID& texture_id, ImageData&& image_data);
 /**
  * @brief Updates a texture with new image data. (using move semantics).
  */
 void UpdateTexture(entt::registry& registry, entt::entity texture_asset, ImageData&& image_data);
 
 
+
 // --- Meshes ------------------------------------------------------
-// /**
-//  * @brief Loads a 3D mesh from disk into the ECS. 
-//  * Returns the cached entity ID if already loaded.
-//  */
-// entt::entity LoadMeshFromFile(entt::registry& registry, const std::string& filepath);
 /**
- * @brief Creates a mesh from an existing MeshData struct.
+ * @brief Checks if a mesh already exists in the cache.
+ */
+entt::entity GetCachedMesh(entt::registry& registry, const MeshID& mesh_id);
+/**
+ * @brief Creates a mesh (handles RHI allocation and uploading).
  * Takes ownership of the data via move semantics to prevent deep copies.
+ * If the mesh_id already exists, it gets overrided by a new mesh.
  */
-entt::entity CreateMesh(entt::registry& registry, MeshData&& mesh_data);
+entt::entity CreateMesh(entt::registry& registry, const MeshID& mesh_id,MeshData&& mesh_data);
 /**
- * @brief Creates an empty dynamic mesh buffer.
+ * @brief Updates an existing mesh asset with new data.
+ * Crucial for dynamic geometry like LIDAR point clouds or procedural terrain.
  */
-entt::entity CreateMesh(entt::registry& registry, MeshTopology topology = MeshTopology::TRIANGLES);
+void UpdateMesh(entt::registry& registry, entt::entity mesh_asset, MeshData&& mesh_data);
 /**
  * @brief Binds a loaded mesh asset to a physical world entity.
  * This tells the RHI to draw the mesh at the entity's Transform location.
@@ -98,9 +104,18 @@ void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity 
 
 // --- Materials ---------------------------------------------------
 /**
- * @brief Spawns a new Material entity in the ECS.
+ * @brief Gets a material that already exists in the cache using its unique ID.
  */
-entt::entity CreateMaterial(entt::registry& registry, const MaterialData& mat_data);
+entt::entity GetCachedMaterial(entt::registry& registry, const MaterialID& material_id);
+/**
+ * @brief Spawns a new Material entity and caches it under a specific ID.
+ */
+entt::entity CreateMaterial(entt::registry& registry, const MaterialID& material_id, const MaterialData& mat_data);
+/**
+ * @brief Updates an existing material with new parameters (e.g., changing colors dynamically).
+ * Automatically syncs the changes to the underlying RHI hardware handle.
+ */
+void UpdateMaterial(entt::registry& registry, entt::entity material_asset, const MaterialData& mat_data);
 /**
  * @brief A helper to quickly apply a material to a mesh asset.
  * If index_count is 0, it applies the material to the entire mesh.

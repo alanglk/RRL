@@ -17,16 +17,19 @@ namespace rrl::io {
  * @brief File loaded material. This contains references for calling io::LoadImage().
  */
 struct IOMaterial {
+    std::string name;       // Material name from the parsed file
     data::MaterialData material_parameters; // only fills static values
     std::string albedo_path;
     std::string normal_path;
+    std::string metallic_roughness_path;
+    std::string emissive_path;
 };
 
 /**
  * @brief A file-loaded hierarchical node (can contain a mesh, a transform, and children).
  */
 struct IONode {
-    std::string name;       // Node name for instancing / identification
+    std::string name;       // Mesh node name for instancing / identification
     data::MeshData mesh;    // Node mesh (can be empty if it's just a transform group)
     
     // Node default relative transform to its parent

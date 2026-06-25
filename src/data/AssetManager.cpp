@@ -1,6 +1,7 @@
 // RRL/src/data/AssetManager.hpp
 
 #include "RRL/data/AssetManager.hpp"
+#include "FLogging/FLogging.hpp"
 #include "RRL/data/AssetReferenceCounter.hpp"
 
 #include "RRL/data/TextureComponents.hpp"
@@ -9,15 +10,13 @@
 #include "RRL/data/MaterialComponents.hpp"
 
 
-#include "RRL/io/ImageIO.hpp"
-
-
 #include "RRL/rhi/RHIAPI.hpp"
 
 
 
 #include <unordered_map>
 #include "RRL/DebugMacros.hpp"
+#include "entt/entity/entity.hpp"
 
 
 namespace rrl::data {
@@ -27,8 +26,9 @@ namespace rrl::data {
  * @brief Holds the running asset cached context.
  */
 struct AssetCache {
-    std::unordered_map<std::string, entt::entity> textures;
-    std::unordered_map<std::string, entt::entity> meshes;
+    std::unordered_map<TextureID, entt::entity> textures;
+    std::unordered_map<MeshID, entt::entity> meshes;
+    std::unordered_map<MaterialID, entt::entity> materials;
     AssetGCPolicy gc_policy { AssetGCPolicy::CASCADE_DELETE };
 };
 
@@ -69,6 +69,7 @@ static void OnMaterialDataDestroyed(entt::registry& registry, entt::entity entit
     DecrementAssetRef(registry, mat.albedo_map);
     DecrementAssetRef(registry, mat.normal_map);
     DecrementAssetRef(registry, mat.metallic_roughness_map);
+    DecrementAssetRef(registry, mat.emissive_map);
 }
 static void OnMeshSourceDestroyed(entt::registry& registry, entt::entity entity) {
     auto& source = registry.get<MeshSourceComponent>(entity);
@@ -98,17 +99,20 @@ void InitializeAssetManager(entt::registry& registry) {
     registry.on_destroy<MeshSourceComponent>().connect<&OnMeshSourceDestroyed>();
 }
 void SetAssetGCPolicy(entt::registry& registry, AssetGCPolicy policy) {
+    RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
     if (registry.ctx().contains<AssetCache>()) {
         registry.ctx().get<AssetCache>().gc_policy = policy;
     }
 }
 AssetGCPolicy GetAssetGCPolicy(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
     if (registry.ctx().contains<AssetCache>()) {
         return registry.ctx().get<AssetCache>().gc_policy;
     }
     return AssetGCPolicy::CASCADE_DELETE;
 }
 void FreeUnusedAssets(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
     bool assets_freed = true;
     
     // Keep sweeping until the dependency cascade fully resolves
@@ -135,6 +139,7 @@ void FreeUnusedAssets(entt::registry& registry) {
 }
 void DestroyAsset(entt::registry& registry, entt::entity asset_entity) {
     if (!registry.valid(asset_entity)) return;
+    RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
 
     if (registry.ctx().contains<AssetCache>()) {
         auto& cache = registry.ctx().get<AssetCache>();
@@ -146,16 +151,23 @@ void DestroyAsset(entt::registry& registry, entt::entity asset_entity) {
             if (it->second == asset_entity) it = cache.meshes.erase(it);
             else ++it;
         }
+        for (auto it = cache.materials.begin(); it != cache.materials.end(); ) {
+            if (it->second == asset_entity) it = cache.materials.erase(it);
+            else ++it;
+        }
     }
 
     // Destroying the entity triggers the GC callbacks
     registry.destroy(asset_entity); 
 }
 void DestroyAllAssets(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
+    
     // Clear caches first
     if (registry.ctx().contains<AssetCache>()) {
         registry.ctx().get<AssetCache>().textures.clear();
         registry.ctx().get<AssetCache>().meshes.clear();
+        registry.ctx().get<AssetCache>().materials.clear();
     }
 
     auto textures = registry.view<TextureSourceComponent>();
@@ -171,47 +183,35 @@ void DestroyAllAssets(entt::registry& registry) {
 
 
 // --- Textures ----------------------------------------------------
-entt::entity LoadTextureFromFile(entt::registry& registry, const std::string& filepath) {
+entt::entity GetCachedTexture(entt::registry& registry, const TextureID& texture_id) {
     RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
-    auto& cache = registry.ctx().get<AssetCache>();
-
-    if (cache.textures.find(filepath) != cache.textures.end()) {
-        return cache.textures[filepath];
+    if (registry.ctx().contains<AssetCache>()) {
+        auto& cache = registry.ctx().get<AssetCache>();
+        auto it = cache.textures.find(texture_id);
+        if (it != cache.textures.end()) return it->second;
     }
+    return entt::null;
+}
+entt::entity CreateTexture(entt::registry& registry, const TextureID& texture_id, ImageData&& image_data) {
+    RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
+    RRL_ASSERT(!texture_id.empty(), "CreateTexture: texture_id cannot be empty!");
 
-    ImageData raw_image = rrl::io::LoadImage(filepath);
-    if (raw_image.GetDataSize() == 0) {
-        LOG_ERROR("AssetManager: Failed to load texture '{}'", filepath);
-        return entt::null;
+    if (registry.ctx().contains<AssetCache>() && !texture_id.empty()) {
+        auto& cache = registry.ctx().get<AssetCache>();
+        auto cached_texture = GetCachedTexture(registry, texture_id);
+        if (cached_texture != entt::null) {
+            LOG_WARN("CreateTexture: texture '{}' already exists on cache. Overriding it", texture_id);
+            DestroyAsset(registry, cached_texture);
+        }
+
+        entt::entity tex_entity = registry.create();
+        auto& source = registry.emplace<TextureSourceComponent>(tex_entity);
+        source.image = std::make_shared<ImageData>(std::move(image_data)); 
+        source.version = 1;
+        cache.textures[texture_id] = tex_entity;
+        return tex_entity;
     }
-
-    // Use move semantics to transfer ownership of the loaded data
-    entt::entity tex_entity = CreateTexture(registry, std::move(raw_image));
-    cache.textures[filepath] = tex_entity;
-
-    return tex_entity;
-}
-entt::entity CreateTexture(entt::registry& registry, ImageData&& image_data) {
-    entt::entity tex_entity = registry.create();
-    
-    auto& source = registry.emplace<TextureSourceComponent>(tex_entity);
-    source.image = std::make_shared<ImageData>(std::move(image_data)); // Move the heavy vectors!
-    source.version = 1;
-
-    return tex_entity;
-}
-entt::entity CreateTexture(entt::registry& registry, uint32_t width, uint32_t height, 
-                           ImageChannelLayout channels, ImageDataType type) {
-    ImageData img;
-    img.width = width;
-    img.height = height;
-    img.channels = channels;
-    img.data_type = type;
-    
-    size_t byte_size = width * height * static_cast<size_t>(channels);
-    img.data.resize(byte_size, 0);
-
-    return CreateTexture(registry, std::move(img));
+    return entt::null;
 }
 void UpdateTexture(entt::registry& registry, entt::entity texture_asset, ImageData&& image_data) {
     if (texture_asset == entt::null) {
@@ -236,44 +236,72 @@ void UpdateTexture(entt::registry& registry, entt::entity texture_asset, ImageDa
 
 
 // --- Meshes ------------------------------------------------------
-/*
-entt::entity LoadMeshFromFile(entt::registry& registry, const std::string& filepath) {
+entt::entity GetCachedMesh(entt::registry& registry, const MeshID& mesh_id) {
     RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
-    auto& cache = registry.ctx().get<AssetCache>();
-
-    if (cache.meshes.find(filepath) != cache.meshes.end()) {
-        return cache.meshes[filepath];
+    if (registry.ctx().contains<AssetCache>()) {
+        auto& cache = registry.ctx().get<AssetCache>();
+        auto it = cache.meshes.find(mesh_id);
+        if (it != cache.meshes.end()) return it->second;
     }
-
-    // TODO: implement MeshIO
-    MeshData raw_mesh = rrl::io::LoadMesh(filepath);
-    if (raw_mesh.positions.empty()) {
-        LOG_ERROR("AssetManager: Failed to load mesh '{}'", filepath);
-        return entt::null;
-    }
-    entt::entity mesh_entity = CreateMesh(registry, std::move(raw_mesh));
-    // Placeholder
-    entt::entity mesh_entity = CreateMesh(registry, MeshTopology::TRIANGLES);
-    cache.meshes[filepath] = mesh_entity;
-
-    return mesh_entity;
+    return entt::null;
 }
-*/
-    /*
-    */
-entt::entity CreateMesh(entt::registry& registry, MeshData&& mesh_data) {
-    entt::entity mesh_entity = registry.create();
+entt::entity CreateMesh(entt::registry& registry, const MeshID& mesh_id,MeshData&& mesh_data) {
+    RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
+    RRL_ASSERT(!mesh_id.empty(), "CreateMesh: mesh_id cannot be empty!");
+
+    if (registry.ctx().contains<AssetCache>() && !mesh_id.empty()) {
+        auto& cache = registry.ctx().get<AssetCache>();
+        auto cached_mesh = GetCachedMesh(registry, mesh_id);
+        if (cached_mesh != entt::null) {
+            LOG_WARN("CreateMesh: mesh '{}' already exists on cache. Overriding it", mesh_id);
+            DestroyAsset(registry, cached_mesh);
+        }
+
+        // cache out pre_linked materials (if any)
+        auto pre_linked_materials = mesh_data.materials;
+        mesh_data.materials.clear();
+
+        entt::entity mesh_entity = registry.create();
+        auto& source = registry.emplace<MeshSourceComponent>(mesh_entity);
+        source.mesh = std::make_shared<MeshData>(std::move(mesh_data)); // Move the geometry vectors
+        source.version = 1;
+        cache.meshes[mesh_id] = mesh_entity;
+
+        // Automatically link materials if available
+        for (const auto& mat_link : pre_linked_materials) {
+            BindMaterial(registry, mesh_entity, mat_link.material_entity, mat_link.index_offset, mat_link.index_count);
+        }
+
+        return mesh_entity;
+    }
+    return entt::null;
     
-    auto& source = registry.emplace<MeshSourceComponent>(mesh_entity);
-    source.mesh = std::make_shared<MeshData>(std::move(mesh_data)); // Move the geometry vectors
-    source.version = 1;
-
-    return mesh_entity;
 }
-entt::entity CreateMesh(entt::registry& registry, MeshTopology topology) {
-    MeshData mesh;
-    mesh.topology = topology;
-    return CreateMesh(registry, std::move(mesh));
+void UpdateMesh(entt::registry& registry, entt::entity mesh_asset, MeshData&& mesh_data) {
+    if (mesh_asset == entt::null) return;
+    RRL_ASSERT(registry.valid(mesh_asset), "UpdateMesh: Invalid mesh asset entity!");
+    RRL_ASSERT(registry.all_of<MeshSourceComponent>(mesh_asset), "UpdateMesh: Entity lacks a MeshSourceComponent!");
+    
+    // Isolate incoming materials
+    auto pre_linked_materials = mesh_data.materials;
+    mesh_data.materials.clear();
+
+    auto& source = registry.get<MeshSourceComponent>(mesh_asset);
+
+    // Wipe old GC linkages
+    if (source.mesh) {
+        for (const auto& mat_link : source.mesh->materials) {
+            DecrementAssetRef(registry, mat_link.material_entity);
+        }
+    }
+
+    source.mesh = std::make_shared<MeshData>(std::move(mesh_data));
+    source.version.fetch_add(1, std::memory_order_release);
+
+    // Bind new materials
+    for (const auto& mat_link : pre_linked_materials) {
+        BindMaterial(registry, mesh_asset, mat_link.material_entity, mat_link.index_offset, mat_link.index_count);
+    }
 }
 void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity mesh_asset) {
     RRL_ASSERT(registry.valid(world_object), "BindMesh: Invalid world object entity!");
@@ -298,10 +326,69 @@ void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity 
 
 
 // --- Materials ---------------------------------------------------
-entt::entity CreateMaterial(entt::registry& registry, const MaterialData& mat_data) {
-    entt::entity mat_entity = registry.create();
-    registry.emplace<MaterialData>(mat_entity, mat_data);
-    return mat_entity;
+entt::entity GetCachedMaterial(entt::registry& registry, const MaterialID& material_id) {
+    RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
+    if (registry.ctx().contains<AssetCache>()) {
+        auto& cache = registry.ctx().get<AssetCache>();
+        auto it = cache.materials.find(material_id);
+        if (it != cache.materials.end()) return it->second;
+    }
+    return entt::null;
+}
+entt::entity CreateMaterial(entt::registry& registry, const MaterialID& material_id, const MaterialData& mat_data) {
+    RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
+    RRL_ASSERT(!material_id.empty(), "CreateMaterial: material_id cannot be empty!");
+    
+    if (registry.ctx().contains<AssetCache>()) {
+        auto& cache = registry.ctx().get<AssetCache>();
+        auto cached_mat = GetCachedMaterial(registry, material_id);
+        if (cached_mat != entt::null) {
+            LOG_WARN("CreateMaterial: material '{}' already exists on cache. Overriding it", material_id);
+            DestroyAsset(registry, cached_mat);
+        }
+
+        // Isolate incoming textures to route them securely through BindMaterialTexture
+        MaterialData clean_data = mat_data;
+        clean_data.albedo_map = entt::null;
+        clean_data.normal_map = entt::null;
+        clean_data.metallic_roughness_map = entt::null;
+        clean_data.emissive_map = entt::null;
+
+        entt::entity mat_entity = registry.create();
+        registry.emplace<MaterialData>(mat_entity, clean_data);
+        cache.materials[material_id] = mat_entity;
+
+        // Securely bind textures
+        if (registry.valid(mat_data.albedo_map)) BindMaterialTexture(registry, mat_entity, mat_data.albedo_map, MaterialTextureType::ALBEDO);
+        if (registry.valid(mat_data.normal_map)) BindMaterialTexture(registry, mat_entity, mat_data.normal_map, MaterialTextureType::NORMAL_MAP);
+        if (registry.valid(mat_data.metallic_roughness_map)) BindMaterialTexture(registry, mat_entity, mat_data.metallic_roughness_map, MaterialTextureType::METALLIC_ROUGHNESS_MAP);
+        if (registry.valid(mat_data.emissive_map)) BindMaterialTexture(registry, mat_entity, mat_data.emissive_map, MaterialTextureType::EMISSIVE_MAP);
+        return mat_entity;
+    }
+
+    return entt::null;
+}
+void UpdateMaterial(entt::registry& registry, entt::entity material_asset, const MaterialData& mat_data) {
+    RRL_ASSERT(registry.valid(material_asset), "UpdateMaterial: Invalid material asset!");
+    RRL_ASSERT(registry.all_of<MaterialData>(material_asset), "UpdateMaterial: Lacks MaterialData!");
+
+    auto& old_mat = registry.get<MaterialData>(material_asset);
+    MaterialData next_mat = mat_data;
+
+    // Preserve the old textures inside the patch to let the Bind API handle the swapping cleanly
+    next_mat.albedo_map = old_mat.albedo_map;
+    next_mat.normal_map = old_mat.normal_map;
+    next_mat.metallic_roughness_map = old_mat.metallic_roughness_map;
+    next_mat.emissive_map = old_mat.emissive_map;
+    
+    old_mat = next_mat;
+    registry.patch<MaterialData>(material_asset);
+
+    // Securely swap bindings
+    if (old_mat.albedo_map != mat_data.albedo_map) BindMaterialTexture(registry, material_asset, mat_data.albedo_map, MaterialTextureType::ALBEDO);
+    if (old_mat.normal_map != mat_data.normal_map) BindMaterialTexture(registry, material_asset, mat_data.normal_map, MaterialTextureType::NORMAL_MAP);
+    if (old_mat.metallic_roughness_map != mat_data.metallic_roughness_map) BindMaterialTexture(registry, material_asset, mat_data.metallic_roughness_map, MaterialTextureType::METALLIC_ROUGHNESS_MAP);
+    if (old_mat.emissive_map != mat_data.emissive_map) BindMaterialTexture(registry, material_asset, mat_data.emissive_map, MaterialTextureType::EMISSIVE_MAP);
 }
 void BindMaterial(entt::registry& registry, entt::entity mesh_asset, entt::entity material_asset, 
                   uint32_t index_offset, uint32_t index_count) {
@@ -313,11 +400,26 @@ void BindMaterial(entt::registry& registry, entt::entity mesh_asset, entt::entit
     auto& source = registry.get<MeshSourceComponent>(mesh_asset);
     if (!source.mesh) return;
 
-    // Track the new dependency
-    IncrementAssetRef(registry, material_asset);
-
     uint32_t count = (index_count == 0) ? static_cast<uint32_t>(source.mesh->indices.size()) : index_count;
-    source.mesh->materials.push_back({index_offset, count, material_asset});
+
+    bool replaced = false;
+    for (auto& mat_link : source.mesh->materials) {
+        if (mat_link.index_offset == index_offset && mat_link.index_count == count) {
+            if (mat_link.material_entity != material_asset) {
+                DecrementAssetRef(registry, mat_link.material_entity); 
+                IncrementAssetRef(registry, material_asset);           
+                mat_link.material_entity = material_asset;             
+            }
+            replaced = true;
+            break;
+        }
+    }
+
+    if (!replaced) {
+        IncrementAssetRef(registry, material_asset);
+        source.mesh->materials.push_back({index_offset, count, material_asset});
+    }
+
     source.version.fetch_add(1, std::memory_order_release);
 }
 
@@ -337,6 +439,7 @@ void BindMaterialTexture(entt::registry& registry, entt::entity material_asset, 
             case MaterialTextureType::ALBEDO: target_slot = &mat.albedo_map; break;
             case MaterialTextureType::NORMAL_MAP: target_slot = &mat.normal_map; break;
             case MaterialTextureType::METALLIC_ROUGHNESS_MAP: target_slot = &mat.metallic_roughness_map; break;
+            case MaterialTextureType::EMISSIVE_MAP: target_slot = &mat.emissive_map; break;
         }
 
         if (target_slot && *target_slot != texture_asset) {
@@ -344,6 +447,7 @@ void BindMaterialTexture(entt::registry& registry, entt::entity material_asset, 
             DecrementAssetRef(registry, *target_slot);
             IncrementAssetRef(registry, texture_asset);
             *target_slot = texture_asset;
+            registry.patch<MaterialData>(material_asset);
         }
     }
 }

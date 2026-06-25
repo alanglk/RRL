@@ -10,7 +10,8 @@ namespace rrl::data {
 enum class MaterialTextureType : uint8_t {
     ALBEDO = 0,
     NORMAL_MAP = 1,
-    METALLIC_ROUGHNESS_MAP = 2
+    METALLIC_ROUGHNESS_MAP = 2,
+    EMISSIVE_MAP = 3
 };
 
 /**
@@ -27,6 +28,7 @@ struct MaterialData {
     entt::entity albedo_map { entt::null };
     entt::entity normal_map { entt::null };
     entt::entity metallic_roughness_map { entt::null };
+    entt::entity emissive_map { entt::null };
 };
 
 

@@ -9,7 +9,8 @@
 
 // The default obj loader max size is 256Mb. If you need to increase the max loading size use this:
 #ifndef TINYOBJLOADER_STREAM_READER_MAX_BYTES
-#define TINYOBJLOADER_STREAM_READER_MAX_BYTES (size_t(256) * size_t(1024) * size_t(1024))
+// #define TINYOBJLOADER_STREAM_READER_MAX_BYTES (size_t(256) * size_t(1024) * size_t(1024))
+#define TINYOBJLOADER_STREAM_READER_MAX_BYTES (size_t(265) * size_t(1024) * size_t(1024))
 #endif
 #ifndef TINYOBJLOADER_IMPLEMENTATION
 #define TINYOBJLOADER_IMPLEMENTATION
@@ -73,22 +74,45 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
 
     // Load Materials
     for (const auto& tiny_mat : tiny_materials) {
-        IOMaterial parsed_mat;
+        IOMaterial parsed_mat {.name = tiny_mat.name };
         
-        // TODO: Add more tiny_mat material elements
-        
-
+        // PBR albedo = Phong diffuse
         parsed_mat.material_parameters.base_color = glm::vec4(
             tiny_mat.diffuse[0], tiny_mat.diffuse[1], tiny_mat.diffuse[2], 1.0f
         );
-        parsed_mat.material_parameters.roughness = tiny_mat.roughness;
-        parsed_mat.material_parameters.metallic = tiny_mat.metallic;
 
+        // Emission
+        parsed_mat.material_parameters.emmission = glm::vec3(
+            tiny_mat.emission[0], tiny_mat.emission[1], tiny_mat.emission[2]
+        );
+
+        // PBR Attributes (tinyobjloader supports modern PBR extensions)
+        parsed_mat.material_parameters.roughness    = tiny_mat.roughness; // Pr
+        parsed_mat.material_parameters.metallic     = tiny_mat.metallic;   // Pm
+
+        // Texture Mapping
         if (!tiny_mat.diffuse_texname.empty()) {
             parsed_mat.albedo_path = config.mtl_search_path + tiny_mat.diffuse_texname;
         }
+
+        // Normal or bump textures for normal mapping
         if (!tiny_mat.normal_texname.empty()) {
             parsed_mat.normal_path = config.mtl_search_path + tiny_mat.normal_texname;
+        }
+        else if (!tiny_mat.bump_texname.empty()) {
+            parsed_mat.normal_path = config.mtl_search_path + tiny_mat.bump_texname;
+        } 
+
+        // PBR metallic/roughness textures ( we may need to combine both )
+        if (!tiny_mat.roughness_texname.empty()) {
+            parsed_mat.metallic_roughness_path = config.mtl_search_path + tiny_mat.roughness_texname;
+        } else if (!tiny_mat.metallic_texname.empty()) {
+            parsed_mat.metallic_roughness_path = config.mtl_search_path + tiny_mat.metallic_texname;
+        }
+        
+        // Emissive Map
+        if (!tiny_mat.emissive_texname.empty()) {
+            parsed_mat.emissive_path = config.mtl_search_path + tiny_mat.emissive_texname;
         }
 
         scene.materials.push_back(parsed_mat);
@@ -112,6 +136,15 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
         uint32_t current_index_offset = 0;
         uint32_t current_index_count = 0;
         size_t index_offset = 0;
+        
+        // Lambda to pack a name into a temporary entity identifyer
+        auto GetMaterialHashAsEntity = [&](int mat_id) -> entt::entity {
+            if (mat_id >= 0 && mat_id < static_cast<int>(tiny_materials.size())) {
+                entt::id_type hash = entt::hashed_string(tiny_materials[mat_id].name.c_str()).value();
+                return static_cast<entt::entity>(hash);
+            }
+            return entt::null;
+        };
 
         for (size_t f = 0; f < tiny_shape.mesh.num_face_vertices.size(); f++) {
             size_t fv = size_t(tiny_shape.mesh.num_face_vertices[f]);
@@ -123,7 +156,7 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
                     parsed_node.mesh.materials.push_back({
                         current_index_offset, 
                         current_index_count, 
-                        static_cast<entt::entity>(current_material_id)
+                        GetMaterialHashAsEntity(current_material_id)
                     });
                 }
                 current_material_id = face_mat_id;
@@ -200,7 +233,7 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
             parsed_node.mesh.materials.push_back({
                 current_index_offset, 
                 current_index_count, 
-                static_cast<entt::entity>(current_material_id)
+                GetMaterialHashAsEntity(current_material_id)
             });
         }
         

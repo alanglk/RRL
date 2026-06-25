@@ -2,6 +2,7 @@
 
 #include "RRL/scene/SceneManager.hpp"
 #include "RRL/data/AssetManager.hpp"
+#include "RRL/io/ImageIO.hpp"
 #include "RRL/tf/TransformTree.hpp"
 
 
@@ -39,7 +40,12 @@ struct PrefabCache {
 
 
 // --- Helpers -----------------------------------------------------
-static PrefabNodeBlueprint ProcessIONodeRecursive(entt::registry& registry, io::IONode&& io_node, const std::vector<entt::entity>& real_materials) {
+static PrefabNodeBlueprint ProcessIONodeRecursive(
+    entt::registry& registry, 
+    const BlueprintID& blueprint_id, 
+    io::IONode&& io_node, 
+    const std::unordered_map<std::string, entt::entity>& material_name_lut ) 
+{
     PrefabNodeBlueprint node_bp;
     node_bp.name = io_node.name;
     node_bp.local_position = io_node.local_position;
@@ -48,13 +54,28 @@ static PrefabNodeBlueprint ProcessIONodeRecursive(entt::registry& registry, io::
 
     if (!io_node.mesh.positions.empty()) {
         auto sub_meshes = io_node.mesh.materials;
-        entt::entity mesh_asset = data::CreateMesh(registry, std::move(io_node.mesh));
+        io_node.mesh.materials.clear(); // Strip the IO material IDs to let the asset manager handle the actual binding correctly
+        std::string mesh_id = blueprint_id + "_mesh_" + node_bp.name;
+        entt::entity mesh_asset = data::CreateMesh(registry, mesh_id, std::move(io_node.mesh));
 
         for (const auto& sub_mesh : sub_meshes) {
-            int mat_idx = static_cast<int>(entt::to_integral(sub_mesh.material_entity));
-            if (mat_idx >= 0 && mat_idx < real_materials.size()) {
-                data::BindMaterial(registry, mesh_asset, real_materials[mat_idx], sub_mesh.index_offset, sub_mesh.index_count);
+            auto mat_name_hash = static_cast<entt::id_type>(entt::to_integral(sub_mesh.material_entity));
+            entt::entity matched_material = entt::null;
+            
+            // Find which string key matches the packed hash
+            for (const auto& [name, entity] : material_name_lut) {
+                if (entt::hashed_string(name.c_str()).value() == mat_name_hash) {
+                    matched_material = entity;
+                    break;
+                }
             }
+            if (matched_material != entt::null) {
+                data::BindMaterial(registry, mesh_asset, matched_material, sub_mesh.index_offset, sub_mesh.index_count);
+            } else {
+                LOG_WARN("[SceneManager] Submesh inside '{}' requested unknown material hash: ID {}.", node_bp.name, mat_name_hash);
+            }
+            node_bp.mesh_asset = mesh_asset;
+            data::IncrementAssetRef(registry, mesh_asset);
         }
         node_bp.mesh_asset = mesh_asset;
         
@@ -64,7 +85,7 @@ static PrefabNodeBlueprint ProcessIONodeRecursive(entt::registry& registry, io::
     }
 
     for (auto& child_io : io_node.children) {
-        node_bp.children.push_back(ProcessIONodeRecursive(registry, std::move(child_io), real_materials));
+        node_bp.children.push_back(ProcessIONodeRecursive(registry, blueprint_id, std::move(child_io), material_name_lut));
     }
 
     return node_bp;
@@ -124,6 +145,20 @@ static void UnpinBlueprintAssetsRecursive(entt::registry& registry, const Prefab
         UnpinBlueprintAssetsRecursive(registry, child);
     }
 }
+static entt::entity ResolveAndCacheTexture(entt::registry& registry, const std::string& filepath) {
+    // Helper to load Images from disk if not cached on the asset manager
+    if (filepath.empty()) return entt::null;
+    entt::entity cached_tex = data::GetCachedTexture(registry, filepath);
+    if (cached_tex != entt::null) return cached_tex;
+
+    // Load disk payload inside SceneManager I/O context
+    data::ImageData raw_image = rrl::io::LoadImage(filepath);
+    if (raw_image.GetDataSize() == 0) {
+        LOG_ERROR("[SceneManager] Failed to load texture file: '{}'", filepath);
+        return entt::null;
+    }
+    return data::CreateTexture(registry, filepath, std::move(raw_image));
+}
 
 
 // --- Lifecycle ---------------------------------------------------
@@ -143,25 +178,31 @@ void PreloadPrefabBlueprint(entt::registry& registry, const BlueprintID& bluepri
     blueprint.id = blueprint_id;
     
     // Upload Materials and bind Textures
-    std::vector<entt::entity> real_materials;
+    std::unordered_map<std::string, entt::entity> material_name_lut;
     for (auto& io_mat : prefab_data.materials) {
-        entt::entity mat_entity = data::CreateMaterial(registry, io_mat.material_parameters);
-        
-        if (!io_mat.albedo_path.empty()) {
-            entt::entity tex_entity = data::LoadTextureFromFile(registry, io_mat.albedo_path);
-            data::BindMaterialTexture(registry, mat_entity, tex_entity, data::MaterialTextureType::ALBEDO);
-        }
-        if (!io_mat.normal_path.empty()) {
-            entt::entity tex_entity = data::LoadTextureFromFile(registry, io_mat.normal_path);
-            data::BindMaterialTexture(registry, mat_entity, tex_entity, data::MaterialTextureType::NORMAL_MAP);
-        }
-        real_materials.push_back(mat_entity);
+        // Resolve texture assets using our secure I/O decoupling helper
+        entt::entity albedo_tex    = ResolveAndCacheTexture(registry, io_mat.albedo_path);
+        entt::entity normal_tex    = ResolveAndCacheTexture(registry, io_mat.normal_path);
+        entt::entity metallic_tex  = ResolveAndCacheTexture(registry, io_mat.metallic_roughness_path);
+        entt::entity emissive_tex  = ResolveAndCacheTexture(registry, io_mat.emissive_path);
+
+        // Build a MaterialData payload 
+        data::MaterialData mat_payload = io_mat.material_parameters;
+        mat_payload.albedo_map             = albedo_tex;
+        mat_payload.normal_map             = normal_tex;
+        mat_payload.metallic_roughness_map = metallic_tex;
+        mat_payload.emissive_map           = emissive_tex;
+
+        // Generate a unique cache identifier for this material
+        std::string material_cache_id = blueprint_id + "_mat_" + io_mat.name;
+        entt::entity mat_entity = data::CreateMaterial(registry, material_cache_id, mat_payload);
+        material_name_lut[io_mat.name] = mat_entity;
     }
 
     // Recursively Upload Geometry and Map to Blueprint Tree
     for (auto& io_root_node : prefab_data.root_nodes) {
         blueprint.root_nodes.push_back(
-            ProcessIONodeRecursive(registry, std::move(io_root_node), real_materials)
+            ProcessIONodeRecursive(registry, blueprint_id, std::move(io_root_node), material_name_lut)
         );
     }
 

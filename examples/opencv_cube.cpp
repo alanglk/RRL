@@ -70,7 +70,7 @@ int main() {
 
     // --- 3D Asset Creation ---
     // Generate the raw asset inside the AssetManager storage registry
-    entt::entity cube_asset = data::CreateMesh(registry, CreateWireframeCube(2.0f));
+    entt::entity cube_asset = data::CreateMesh(registry, "cube_mesh", CreateWireframeCube(2.0f));
 
     // --- Physical World Object Creation ---
     // Instantiate a concrete physical object in our 3D space
@@ -93,7 +93,7 @@ int main() {
     // Fixed: Account for 3 channels per pixel to prevent vector out-of-bounds runtime crashes
     ui_image.data.resize(ui_w * ui_h * 3, 0); 
     
-    entt::entity ui_texture = data::CreateTexture(registry, std::move(ui_image));
+    entt::entity ui_texture = data::CreateTexture(registry, "ui_image", std::move(ui_image));
     
     // Create a flat screen element entity and attach it via the safe public API
     entt::entity picture_in_picture_ui = registry.create();
