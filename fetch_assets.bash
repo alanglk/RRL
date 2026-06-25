@@ -11,7 +11,7 @@ echo "Fetching assets..."
 # --- Assets -------------------------------------------------------------------
 declare -A ASSETS=(
     ["models/rungholt"]="https://casual-effects.com/g3d/data10/research/model/rungholt/rungholt.zip"
-    # ["models/space_kit"]="https://kenney.nl/assets/space-kit#inline-download"
+    ["models/space_kit"]="https://kenney.nl/media/pages/assets/space-kit/20874c75ac-1677698978/kenney_space-kit.zip"
 )
 
 
