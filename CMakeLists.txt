@@ -87,6 +87,7 @@ set(RRL_SOURCES
     src/debug/TFDebugger.cpp
     src/debug/AssetManagerDebugger.cpp
     src/debug/SceneManagerDebugger.cpp
+    src/debug/RHIDebugger.cpp
 
 )
 

@@ -49,6 +49,16 @@ enum class RHIRenderingMode : uint8_t {
 };
 
 /**
+ * @brief Runtime flags for the RHI to toggle debug rendering features.
+ */
+enum class RHIDebugFlag : uint32_t {
+    FLAG_NONE              = 0,
+    FLAG_DRAW_WIREFRAMES   = 1 << 0,  // Render meshes as wireframes (except point topology)
+    FLAG_DISABLE_TEXTURES  = 1 << 1,  // Skip texture sampling (draw base colors only)
+    FLAG_SHOW_UVS          = 1 << 2   // Render UV coordinates as RGB colors
+};
+
+/**
  * @brief Defines how the RHI context is created.
  */
 struct RHIConfig {
@@ -94,7 +104,32 @@ struct RHIBackend {
 
     // Reads rendered data from the RHI back to CPU RAM
     data::ImageData (*GetTargetImage)(entt::registry& registry, RenderTargetHandle handle) { nullptr };
+
+
+    // --- Debugging ---
+    void (*SetDebugFlag)(entt::registry& registry, RHIDebugFlag flag, bool enable) { nullptr };
+    RHIDebugFlag (*GetActiveDebugFlags)(entt::registry& registry) { nullptr };
+
 };
+
+
+
+// RHIDebugFlag bitwise operations
+inline constexpr RHIDebugFlag operator|(RHIDebugFlag a, RHIDebugFlag b) { 
+    return static_cast<RHIDebugFlag>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b)); 
+}
+inline constexpr RHIDebugFlag operator&(RHIDebugFlag a, RHIDebugFlag b) { 
+    return static_cast<RHIDebugFlag>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b)); 
+}
+inline constexpr RHIDebugFlag operator~(RHIDebugFlag a) { 
+    return static_cast<RHIDebugFlag>(~static_cast<uint32_t>(a)); 
+}
+inline RHIDebugFlag& operator|=(RHIDebugFlag& a, RHIDebugFlag b) { 
+    return a = a | b; 
+}
+inline RHIDebugFlag& operator&=(RHIDebugFlag& a, RHIDebugFlag b) { 
+    return a = a & b; 
+}
 
 
 } // namespace rrl::rhi 

@@ -1,6 +1,7 @@
 // RRL/src/rhi/RHIAPI.cpp
 
 #include "RRL/rhi/RHIAPI.hpp"
+#include "RRL/rhi/RHIBackendManager.hpp"
 
 #include "RRL/data/SynchronizationSystems.hpp"
 
@@ -18,22 +19,17 @@
 namespace rrl::rhi {
 
 
-static RHIBackend g_active_backend;
-
-
-
 // --- Backend -----------------------------------------------------
 bool LoadBackend(RHIBackendType target_backend, entt::registry& registry) {
-    
-    if (g_active_backend.type == target_backend) {
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    if (backend.type == target_backend) {
         return true; // Already loaded
     }
 
-    // Backend loading dispatch
     switch (target_backend) {
         case RHIBackendType::OPENCV:
         #ifdef RRL_RHI_OPENCV
-            g_active_backend = rrl::rhi::opencv::CreateBackend();
+            RHIBackendManager::Instance().SetBackend(rrl::rhi::opencv::CreateBackend());
             return true;
         #else
             LOG_ERROR("LoadBackend failed. OpenCV RHI backend was not compiled.");
@@ -45,26 +41,26 @@ bool LoadBackend(RHIBackendType target_backend, entt::registry& registry) {
             return false;
         }
     }
-    
     return false;
 }
-
 RHIBackendType GetCurrentBackend() {
-    return g_active_backend.type;
+    return RHIBackendManager::Instance().GetBackend().type;
 }
 
 
 
 // --- Lifecycle ---------------------------------------------------
 bool Initialize(entt::registry& registry, const RHIConfig& config) {
-    RRL_ASSERT(g_active_backend.Initialize != nullptr, "RHI Initialize called but no backend is loaded!");
-    return g_active_backend.Initialize(registry, config);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.Initialize != nullptr, "RHI Initialize called but no backend is loaded!");
+    return backend.Initialize(registry, config);
 }
 void Shutdown(entt::registry& registry) {
-if (g_active_backend.Shutdown != nullptr) {
-        g_active_backend.Shutdown(registry);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    if (backend.Shutdown != nullptr) {
+        backend.Shutdown(registry);
     }
-    g_active_backend = RHIBackend{}; // Reset backend to NONE
+    RHIBackendManager::Instance().Reset(); // Reset backend to NONE
 }
 void SyncResources(entt::registry& registry) {
     data::SyncTexturesToRHI(registry);
@@ -72,77 +68,90 @@ void SyncResources(entt::registry& registry) {
     data::SyncMaterialsToRHI(registry);
 }
 void RenderFrame(entt::registry& registry) {
-    RRL_ASSERT(g_active_backend.RenderFrame != nullptr, "RHI RenderFrame called but no backend is loaded!");
-    g_active_backend.RenderFrame(registry);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.RenderFrame != nullptr, "RHI RenderFrame called but no backend is loaded!");
+    backend.RenderFrame(registry);
 }
 
 
 
 // --- Render Targets (FBOs) ---------------------------------------
 RenderTargetHandle CreateRenderTarget(entt::registry& registry, uint32_t width, uint32_t height) {
-    RRL_ASSERT(g_active_backend.CreateRenderTarget != nullptr, "RHI CreateRenderTarget called but no backend is loaded!");
-    return g_active_backend.CreateRenderTarget(registry, width, height);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.CreateRenderTarget != nullptr, "RHI CreateRenderTarget called but no backend is loaded!");
+    return backend.CreateRenderTarget(registry, width, height);
 }
 void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle handle) {
-    if (g_active_backend.DestroyRenderTarget != nullptr) {
-        g_active_backend.DestroyRenderTarget(registry, handle);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    if (backend.DestroyRenderTarget != nullptr) {
+        backend.DestroyRenderTarget(registry, handle);
     }
 }
 
 // --- Textures ----------------------------------------------------
 TextureHandle CreateTexture(entt::registry& registry, const data::ImageData& image_data) {
-    RRL_ASSERT(g_active_backend.CreateTexture != nullptr, "RHI CreateTexture called but no backend is loaded!");
-    return g_active_backend.CreateTexture(registry, image_data);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.CreateTexture != nullptr, "RHI CreateTexture called but no backend is loaded!");
+    return backend.CreateTexture(registry, image_data);
 }
 void UpdateTexture(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) {
-    RRL_ASSERT(g_active_backend.UpdateTexture != nullptr, "RHI UpdateTexture called but no backend is loaded!");
-    g_active_backend.UpdateTexture(registry, handle, image_data);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.UpdateTexture != nullptr, "RHI UpdateTexture called but no backend is loaded!");
+    backend.UpdateTexture(registry, handle, image_data);
 }
 void DestroyTexture(entt::registry& registry, TextureHandle handle) {
-    if (g_active_backend.DestroyTexture != nullptr) {
-        g_active_backend.DestroyTexture(registry, handle);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    if (backend.DestroyTexture != nullptr) {
+        backend.DestroyTexture(registry, handle);
     }
 }
 
 
 // --- Meshes ------------------------------------------------------
 MeshHandle CreateMesh(entt::registry& registry, const data::MeshData& mesh_data) {
-    RRL_ASSERT(g_active_backend.CreateMesh != nullptr, "RHI CreateMesh called but no backend is loaded!");
-    return g_active_backend.CreateMesh(registry, mesh_data);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.CreateMesh != nullptr, "RHI CreateMesh called but no backend is loaded!");
+    return backend.CreateMesh(registry, mesh_data);
 }
 
 void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::MeshData& mesh_data) {
-    RRL_ASSERT(g_active_backend.UpdateMesh != nullptr, "RHI UpdateMesh called but no backend is loaded!");
-    g_active_backend.UpdateMesh(registry, handle, mesh_data);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.UpdateMesh != nullptr, "RHI UpdateMesh called but no backend is loaded!");
+    backend.UpdateMesh(registry, handle, mesh_data);
 }
 
 void DestroyMesh(entt::registry& registry, MeshHandle handle) {
-    if (g_active_backend.DestroyMesh != nullptr) {
-        g_active_backend.DestroyMesh(registry, handle);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    if (backend.DestroyMesh != nullptr) {
+        backend.DestroyMesh(registry, handle);
     }
 }
 
 
 // --- Materials ---------------------------------------------------
 MaterialHandle CreateMaterial(entt::registry& registry, const data::MaterialData& material_data) {
-    RRL_ASSERT(g_active_backend.CreateMaterial != nullptr, "RHI CreateMaterial called but no backend is loaded!");
-    return g_active_backend.CreateMaterial(registry, material_data);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.CreateMaterial != nullptr, "RHI CreateMaterial called but no backend is loaded!");
+    return backend.CreateMaterial(registry, material_data);
 }
 void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data) {
-    RRL_ASSERT(g_active_backend.UpdateMaterial != nullptr, "RHI UpdateMaterial called but no backend is loaded!");
-    g_active_backend.UpdateMaterial(registry, handle, material_data);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.UpdateMaterial != nullptr, "RHI UpdateMaterial called but no backend is loaded!");
+    backend.UpdateMaterial(registry, handle, material_data);
 }
 void DestroyMaterial(entt::registry& registry, MaterialHandle handle) {
-    if (g_active_backend.DestroyMaterial != nullptr) {
-        g_active_backend.DestroyMaterial(registry, handle);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    if (backend.DestroyMaterial != nullptr) {
+        backend.DestroyMaterial(registry, handle);
     }
 }
 
 
 // --- Retrieve Rendered Data --------------------------------------
 data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
-    if (g_active_backend.GetTargetImage != nullptr) {
-        return g_active_backend.GetTargetImage(registry, handle);
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    if (backend.GetTargetImage != nullptr) {
+        return backend.GetTargetImage(registry, handle);
     }
     return data::ImageData{}; // Return empty image
 }

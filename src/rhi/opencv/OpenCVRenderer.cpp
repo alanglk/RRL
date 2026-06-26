@@ -14,6 +14,7 @@
 #include "RRL/data/MeshComponents.hpp"
 #include "RRL/data/MaterialComponents.hpp"
 
+#include "RRL/rhi/RHILayers.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
 
 #include <opencv2/core/mat.hpp>
@@ -21,6 +22,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <FLogging/FLogging.hpp>
+#include "RRL/DebugMacros.hpp"
 
 #include <glm/glm.hpp>
 #include <unordered_map>
@@ -46,13 +48,69 @@ struct OpenCVContext {
     TextureHandle next_tex_handle   { 1 };
     MeshHandle next_mesh_handle     { 1 };
     MaterialHandle next_mat_handle  { 1 };
+    
+    // Debugging flag
+    RHIDebugFlag debug_flag { RHIDebugFlag::FLAG_NONE };
 };
 
+
 // --- Software Rendering ------------------------------------------
-static void DrawWireframeTriangle(cv::Mat& render_target, const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2) {
-    std::vector<cv::Point> pts = { cv::Point(p0.x, p0.y), cv::Point(p1.x, p1.y), cv::Point(p2.x, p2.y) };
-    cv::Scalar debug_wireframe_color(0, 255, 0); // Neon green
-    cv::polylines(render_target, pts, true, debug_wireframe_color, 1);
+static void RasterizeLine(
+    cv::Mat& render_target, cv::Mat& depth_buffer, 
+    const glm::vec3& p0, const glm::vec3& p1, 
+    const cv::Scalar& color) 
+{
+    int x0 = static_cast<int>(p0.x);
+    int y0 = static_cast<int>(p0.y);
+    float z0 = p0.z;
+
+    int x1 = static_cast<int>(p1.x);
+    int y1 = static_cast<int>(p1.y);
+    float z1 = p1.z;
+
+    int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, e2;
+
+    int dist = std::max(std::abs(dx), std::abs(dy));
+    
+    // Point fallback
+    if (dist == 0) {
+        if (x0 >= 0 && x0 < render_target.cols && y0 >= 0 && y0 < render_target.rows) {
+            if (z0 <= depth_buffer.at<float>(y0, x0)) {
+                depth_buffer.at<float>(y0, x0) = z0;
+                render_target.at<cv::Vec3b>(y0, x0) = cv::Vec3b(color[0], color[1], color[2]);
+            }
+        }
+        return;
+    }
+
+    // Standard Bresenham interpolation with depth
+    for (int i = 0; i <= dist; i++) {
+        if (x0 >= 0 && x0 < render_target.cols && y0 >= 0 && y0 < render_target.rows) {
+            float t = static_cast<float>(i) / dist;
+            float z = z0 * (1.0f - t) + z1 * t;
+
+            // Add a slight depth bias so wireframes render cleanly over solid triangles
+            if (z - 0.0005f <= depth_buffer.at<float>(y0, x0)) {
+                depth_buffer.at<float>(y0, x0) = z; // Update Z-Buffer
+                render_target.at<cv::Vec3b>(y0, x0) = cv::Vec3b(color[0], color[1], color[2]); // Draw pixel
+            }
+        }
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+static void DrawWireframeTriangle(
+    cv::Mat& render_target, cv::Mat& depth_buffer, 
+    const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& p2,
+    const cv::Scalar& color) 
+{
+    RasterizeLine(render_target, depth_buffer, p0, p1, color);
+    RasterizeLine(render_target, depth_buffer, p1, p2, color);
+    RasterizeLine(render_target, depth_buffer, p2, p0, color);
 }
 static void RasterizeTriangle(
     cv::Mat& render_target, 
@@ -60,7 +118,8 @@ static void RasterizeTriangle(
     const glm::vec4& c0, const glm::vec4& c1, const glm::vec4& c2,
     const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2,
     const data::MeshData& mesh, uint32_t i0, uint32_t i1, uint32_t i2,
-    const glm::vec4& mat_base_color, const cv::Mat* active_albedo, bool enable_textures) 
+    const glm::vec4& mat_base_color, const cv::Mat* active_albedo, 
+    bool disable_textures, bool show_uvs) 
 {
     // Perspective Divide to Normalized Device Coordinates (NDC)
     glm::vec3 ndc0 = glm::vec3(c0) / c0.w;
@@ -114,35 +173,28 @@ static void RasterizeTriangle(
                     glm::vec4 final_color = mat_base_color * vertex_color;
                     
                     // Debug texture mapping / UVs
-                    #ifdef RHI_DEBUG_RENDERING
-                    if (enable_textures) {
+                    if (show_uvs && !disable_textures) {
                         if (!active_albedo || active_albedo->empty()) {
                             final_color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);    // Red
                         } else if (mesh.uvs.empty()) {
                             final_color = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);    // Blue
                         }
                     }
-                    #endif
 
                     // Execute Texture Atlas Lookup
-                    if (enable_textures && active_albedo && !active_albedo->empty() && !mesh.uvs.empty()) {
-                        // Apply perspective corrections directly to UV coordinates
+                    if (!disable_textures && active_albedo && !active_albedo->empty() && !mesh.uvs.empty()) {
                         glm::vec2 uv = perspective_w * (w0 * mesh.uvs[i0] * inv_w0 + 
                                                        w1 * mesh.uvs[i1] * inv_w1 + 
                                                        w2 * mesh.uvs[i2] * inv_w2);
 
-                        // Robust Wrap mapping logic supporting negative / oversized coordinates securely
                         uv.x = uv.x - std::floor(uv.x);
                         uv.y = uv.y - std::floor(uv.y);
 
-                        // Convert to absolute pixel indexes inside the matrix boundaries
                         int tx = std::clamp(static_cast<int>(uv.x * active_albedo->cols), 0, active_albedo->cols - 1);
                         int ty = std::clamp(static_cast<int>(uv.y * active_albedo->rows), 0, active_albedo->rows - 1);
 
                         cv::Vec3b texel = active_albedo->at<cv::Vec3b>(ty, tx);
                         
-                        // Fallback Guard: If a precision edge maps to absolute pitch black,
-                        // treat it as a background color fallback instead of leaving holes
                         if (texel[0] == 0 && texel[1] == 0 && texel[2] == 0) {
                             final_color = mat_base_color; 
                         } else {
@@ -164,6 +216,9 @@ static void RasterizeTriangle(
     }
 }
 
+
+
+
 // --- Lifecycle ---------------------------------------------------
 static bool Initialize(entt::registry& registry, const RHIConfig& config) {
     // Inject the context into the registry
@@ -182,9 +237,7 @@ static bool Initialize(entt::registry& registry, const RHIConfig& config) {
     return true;
 }
 static void Shutdown(entt::registry& registry) {
-    // If the context doesn't exist, there's nothing to clean
-    if (!registry.ctx().contains<OpenCVContext>()) return;
-
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     if (ctx.config.mode == RHIRenderingMode::WINDOW) {
         cv::destroyWindow(ctx.config.title);
@@ -194,6 +247,7 @@ static void Shutdown(entt::registry& registry) {
     registry.ctx().erase<OpenCVContext>();
 }
 static void RenderFrame(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
 
     // Clear all active targets
@@ -203,6 +257,10 @@ static void RenderFrame(entt::registry& registry) {
     }
 
 
+    // Debug flags
+    bool draw_wireframes  = (ctx.debug_flag & RHIDebugFlag::FLAG_DRAW_WIREFRAMES) != RHIDebugFlag::FLAG_NONE;
+    bool disable_textures = (ctx.debug_flag & RHIDebugFlag::FLAG_DISABLE_TEXTURES) != RHIDebugFlag::FLAG_NONE;
+    bool show_uvs         = (ctx.debug_flag & RHIDebugFlag::FLAG_SHOW_UVS) != RHIDebugFlag::FLAG_NONE;
 
     // --- 3D Rendering --------------------------------------------
     auto mesh_view = registry.view<tf::TFWorldTransformComponent, data::MeshLinkage>();
@@ -228,27 +286,38 @@ static void RenderFrame(entt::registry& registry) {
             const auto& world_tf = mesh_view.get<tf::TFWorldTransformComponent>(physical_entity);
             const auto& linkage = mesh_view.get<data::MeshLinkage>(physical_entity);
             
+            // safety checks + visibility check
             if (!registry.valid(linkage.mesh_asset)) continue;
             if (!registry.all_of<data::MeshRuntimeComponent>(linkage.mesh_asset)) continue;
+            if ((cam.culling_mask & linkage.layer_mask) == rhi::RenderLayer::LAYER_NONE) continue;
+
             MeshHandle mesh_handle = registry.get<data::MeshRuntimeComponent>(linkage.mesh_asset).handle;
             if (ctx.meshes.find(mesh_handle) == ctx.meshes.end()) continue;
             const auto& mesh = ctx.meshes[mesh_handle];
 
             glm::mat4 mvp = cam_rt.view_projection_matrix * world_tf.matrix;
 
-            auto project_vertex = [&](const glm::vec3& local_pos) -> cv::Point {
+            // Lambda to project a vertex 
+            auto project_vertex = [&](const glm::vec3& local_pos) -> glm::vec3 {
                 glm::vec4 clip_space = mvp * glm::vec4(local_pos, 1.0f);
-                if (clip_space.w <= 0.0001f) return cv::Point(-1, -1);
+                if (clip_space.w <= 0.0001f) return glm::vec3(-1.0f, -1.0f, -1.0f); // Mark invalid
                 glm::vec3 ndc = glm::vec3(clip_space) / clip_space.w;
-                return cv::Point(static_cast<int>((ndc.x + 1.0f) * half_w), static_cast<int>((1.0f - ndc.y) * half_h));
+                return glm::vec3((ndc.x + 1.0f) * half_w, (1.0f - ndc.y) * half_h, ndc.z);
             };
 
             // Point Cloud Rasterization
             if (mesh.topology == data::MeshTopology::POINTS) {
                 for (size_t i = 0; i < mesh.positions.size(); ++i) {
-                    cv::Point p = project_vertex(mesh.positions[i]);
-                    if (p.x >= 0 && p.x < render_target.cols && p.y >= 0 && p.y < render_target.rows) {
-                        cv::circle(render_target, p, 2, cv::Scalar(255, 255, 255), -1);
+                    glm::vec3 p = project_vertex(mesh.positions[i]);
+                    if (p.z != -1.0f) {
+                        int px = static_cast<int>(p.x);
+                        int py = static_cast<int>(p.y);
+                        if (px >= 0 && px < render_target.cols && py >= 0 && py < render_target.rows) {
+                            if (p.z <= depth_buffer.at<float>(py, px)) {
+                                depth_buffer.at<float>(py, px) = p.z;
+                                cv::circle(render_target, cv::Point(px, py), 2, cv::Scalar(255, 255, 255), -1);
+                            }
+                        }
                     }
                 }
                 continue; // Skip the indexed rendering below
@@ -259,7 +328,6 @@ static void RenderFrame(entt::registry& registry) {
                 (mesh.topology == data::MeshTopology::TRIANGLES || mesh.topology == data::MeshTopology::LINES) 
                 && !mesh.indices.empty()
             ) {
-
                 // Fallback for primitive shapes that lack material definitions
                 std::vector<data::MeshMaterial> default_submesh;
                 const std::vector<data::MeshMaterial>* active_submeshes = &mesh.materials;
@@ -310,64 +378,63 @@ static void RenderFrame(entt::registry& registry) {
                             static_cast<int>(std::clamp(final_color.r * 255.0f, 0.0f, 255.0f))
                         );
                     };
-
                     // Loop over the indices belonging to this submesh
-                        size_t step = (mesh.topology == data::MeshTopology::TRIANGLES) ? 3 : 2;
-                        bool enable_texture_mapping = false; 
-                        #ifdef RHI_TEXTURE_MAPPING
-                        enable_texture_mapping = true; 
-                        #endif 
+                    size_t step = (mesh.topology == data::MeshTopology::TRIANGLES) ? 3 : 2;
 
-                        // Calculate safe boundaries for this specific chunk
-                        uint32_t start_idx = submesh.index_offset;
-                        uint32_t end_idx = std::min(start_idx + submesh.index_count, static_cast<uint32_t>(mesh.indices.size()));
+                    // Calculate safe boundaries for this specific chunk
+                    uint32_t start_idx = submesh.index_offset;
+                    uint32_t end_idx = std::min(start_idx + submesh.index_count, static_cast<uint32_t>(mesh.indices.size()));
 
-                        for (size_t i = start_idx; i < end_idx; i += step) {
-                            
-                            // Triangles Pipeline
-                            if (step == 3 && i + 2 < end_idx) {
-                                uint32_t i0 = mesh.indices[i];
-                                uint32_t i1 = mesh.indices[i + 1];
-                                uint32_t i2 = mesh.indices[i + 2];
+                    for (size_t i = start_idx; i < end_idx; i += step) {
+                        
+                        // Triangles Pipeline
+                        if (step == 3 && i + 2 < end_idx) {
+                            uint32_t i0 = mesh.indices[i];
+                            uint32_t i1 = mesh.indices[i + 1];
+                            uint32_t i2 = mesh.indices[i + 2];
 
-                                glm::vec4 c0 = mvp * glm::vec4(mesh.positions[i0], 1.0f);
-                                glm::vec4 c1 = mvp * glm::vec4(mesh.positions[i1], 1.0f);
-                                glm::vec4 c2 = mvp * glm::vec4(mesh.positions[i2], 1.0f);
+                            glm::vec4 c0 = mvp * glm::vec4(mesh.positions[i0], 1.0f);
+                            glm::vec4 c1 = mvp * glm::vec4(mesh.positions[i1], 1.0f);
+                            glm::vec4 c2 = mvp * glm::vec4(mesh.positions[i2], 1.0f);
 
-                                if (c0.w <= 0.001f || c1.w <= 0.001f || c2.w <= 0.001f) continue;
+                            if (c0.w <= 0.001f || c1.w <= 0.001f || c2.w <= 0.001f) continue;
 
-                                glm::vec2 p0((glm::vec3(c0) / c0.w).x + 1.0f, 1.0f - (glm::vec3(c0) / c0.w).y);
-                                glm::vec2 p1((glm::vec3(c1) / c1.w).x + 1.0f, 1.0f - (glm::vec3(c1) / c1.w).y);
-                                glm::vec2 p2((glm::vec3(c2) / c2.w).x + 1.0f, 1.0f - (glm::vec3(c2) / c2.w).y);
-                                
-                                p0 *= glm::vec2(half_w, half_h);
-                                p1 *= glm::vec2(half_w, half_h);
-                                p2 *= glm::vec2(half_w, half_h);
+                            glm::vec3 ndc0 = glm::vec3(c0) / c0.w;
+                            glm::vec3 ndc1 = glm::vec3(c1) / c1.w;
+                            glm::vec3 ndc2 = glm::vec3(c2) / c2.w;
 
-                                #ifdef RHI_DEBUG_RENDERING
-                                DrawWireframeTriangle(render_target, p0, p1, p2);
-                                #else
+                            // Keep these as vec3 to preserve Z-depth!
+                            glm::vec3 p0((ndc0.x + 1.0f) * half_w, (1.0f - ndc0.y) * half_h, ndc0.z);
+                            glm::vec3 p1((ndc1.x + 1.0f) * half_w, (1.0f - ndc1.y) * half_h, ndc1.z);
+                            glm::vec3 p2((ndc2.x + 1.0f) * half_w, (1.0f - ndc2.y) * half_h, ndc2.z);
+
+                            if (draw_wireframes) {
+                                cv::Scalar mat_color = get_blended_flat_color({i0, i1, i2});
+                                DrawWireframeTriangle(render_target, depth_buffer, p0, p1, p2, mat_color);
+                            } else {
                                 RasterizeTriangle(
                                     render_target, depth_buffer, 
-                                    c0, c1, c2, p0, p1, p2, 
+                                    c0, c1, c2, glm::vec2(p0), glm::vec2(p1), glm::vec2(p2), 
                                     mesh, i0, i1, i2, 
-                                    mat_base_color, active_albedo, enable_texture_mapping
+                                    mat_base_color, active_albedo, 
+                                    disable_textures, show_uvs
                                 );
-                                #endif
-                            } 
-                            // Lines Pipeline
-                            else if (step == 2 && i + 1 < end_idx) {
-                                cv::Point p1 = project_vertex(mesh.positions[mesh.indices[i]]);
-                                cv::Point p2 = project_vertex(mesh.positions[mesh.indices[i + 1]]);
+                            }
+                        } 
+                        // Lines Pipeline (e.g. Debug Grids and Frustums)
+                        else if (step == 2 && i + 1 < end_idx) {
+                            glm::vec3 p1 = project_vertex(mesh.positions[mesh.indices[i]]);
+                            glm::vec3 p2 = project_vertex(mesh.positions[mesh.indices[i + 1]]);
 
-                                if (p1.x != -1 && p2.x != -1) {
-                                    cv::Scalar line_color = get_blended_flat_color({mesh.indices[i], mesh.indices[i+1]});
-                                    cv::line(render_target, p1, p2, line_color, 2);
-                                }
+                            // Only draw if both vertices are in front of the camera
+                            if (p1.z != -1.0f && p2.z != -1.0f) {
+                                cv::Scalar line_color = get_blended_flat_color({mesh.indices[i], mesh.indices[i+1]});
+                                RasterizeLine(render_target, depth_buffer, p1, p2, line_color);
                             }
                         }
                     }
                 }
+            }
         }
     }
 
@@ -377,8 +444,10 @@ static void RenderFrame(entt::registry& registry) {
     for (auto ui_entity : ui_view) {
         const auto& linkage = ui_view.get<data::TextureLinkage>(ui_entity);
         
+        // safety checks + visibility check
         if (!registry.valid(linkage.texture_asset)) continue;
         if (!registry.all_of<data::TextureRuntimeComponent>(linkage.texture_asset)) continue;
+        if ((linkage.layer_mask & rhi::RenderLayer::LAYER_UI) == rhi::RenderLayer::LAYER_NONE) continue;
         
         // Get the hardware texture handle
         rhi::TextureHandle tex_handle = registry.get<data::TextureRuntimeComponent>(linkage.texture_asset).handle;
@@ -416,6 +485,7 @@ static void RenderFrame(entt::registry& registry) {
 
 // --- Render Targets (FBOs) ---------------------------------------
 static RenderTargetHandle CreateTarget(entt::registry& registry, uint32_t width, uint32_t height) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     
     RenderTargetHandle handle = ctx.next_handle++;
@@ -424,6 +494,7 @@ static RenderTargetHandle CreateTarget(entt::registry& registry, uint32_t width,
     return handle;
 }
 static void DestroyTarget(entt::registry& registry, RenderTargetHandle handle) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     if (handle == TARGET_MAIN) return; // Never destroy the main screen buffer directly
     
     auto& ctx = registry.ctx().get<OpenCVContext>();
@@ -435,6 +506,7 @@ static void DestroyTarget(entt::registry& registry, RenderTargetHandle handle) {
 
 // --- Textures ----------------------------------------------------
 static void UpdateTexture(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     if (ctx.textures.find(handle) == ctx.textures.end() || image_data.data.empty()) return;
 
@@ -443,6 +515,7 @@ static void UpdateTexture(entt::registry& registry, TextureHandle handle, const 
     incoming.copyTo(ctx.textures[handle]);
 }
 static TextureHandle CreateTexture(entt::registry& registry, const data::ImageData& image_data) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     
     TextureHandle handle = ctx.next_tex_handle++;
@@ -456,6 +529,7 @@ static TextureHandle CreateTexture(entt::registry& registry, const data::ImageDa
     return handle;
 }
 static void DestroyTexture(entt::registry& registry, TextureHandle handle) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     ctx.textures.erase(handle); // Safely frees the OpenCV cv::Mat memory
 }
@@ -464,6 +538,7 @@ static void DestroyTexture(entt::registry& registry, TextureHandle handle) {
 
 // --- Meshes ------------------------------------------------------
 static void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::MeshData& mesh_data) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     if (ctx.meshes.find(handle) != ctx.meshes.end()) {
         ctx.meshes[handle] = mesh_data; // Update the cached geometry
@@ -471,6 +546,7 @@ static void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::
 }
 
 static MeshHandle CreateMesh(entt::registry& registry, const data::MeshData& mesh_data) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     MeshHandle handle = ctx.next_mesh_handle++;
     
@@ -479,6 +555,7 @@ static MeshHandle CreateMesh(entt::registry& registry, const data::MeshData& mes
 }
 
 static void DestroyMesh(entt::registry& registry, MeshHandle handle) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     ctx.meshes.erase(handle);
 }
@@ -487,12 +564,14 @@ static void DestroyMesh(entt::registry& registry, MeshHandle handle) {
 
 // --- Materials ---------------------------------------------------
 static void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     if (ctx.materials.find(handle) != ctx.materials.end()) {
         ctx.materials[handle] = material_data;
     }
 }
 static MaterialHandle CreateMaterial(entt::registry& registry, const data::MaterialData& material_data) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     MaterialHandle handle = ctx.next_mat_handle++;
     
@@ -500,6 +579,7 @@ static MaterialHandle CreateMaterial(entt::registry& registry, const data::Mater
     return handle;
 }
 static void DestroyMaterial(entt::registry& registry, MaterialHandle handle) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
     ctx.materials.erase(handle);
 }
@@ -507,9 +587,10 @@ static void DestroyMaterial(entt::registry& registry, MaterialHandle handle) {
 
 // --- Retrieve Rendered Data --------------------------------------
 static data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
-    data::ImageData img;
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
     auto& ctx = registry.ctx().get<OpenCVContext>();
 
+    data::ImageData img;
     if (ctx.render_targets.find(handle) == ctx.render_targets.end()) return img;
 
     const cv::Mat& mat = ctx.render_targets[handle];
@@ -526,6 +607,19 @@ static data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHand
     return img;
 }
 
+
+// --- Debugging ---------------------------------------------------
+static void SetDebugFlag(entt::registry& registry, RHIDebugFlag flag, bool enable) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
+    auto& ctx = registry.ctx().get<OpenCVContext>();
+
+    if (enable) ctx.debug_flag |= flag;
+    else ctx.debug_flag &= ~flag;
+}
+static RHIDebugFlag GetActiveDebugFlags(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<OpenCVContext>(), "OpenCVRenderer not initialized!");
+    return registry.ctx().get<OpenCVContext>().debug_flag;
+}
 
 
 // --- Creation ----------------------------------------------------
@@ -553,6 +647,10 @@ RHIBackend CreateBackend() {
     backend.DestroyMaterial     = DestroyMaterial;
 
     backend.GetTargetImage      = GetTargetImage;
+    
+    backend.SetDebugFlag        = SetDebugFlag;
+    backend.GetActiveDebugFlags = GetActiveDebugFlags;
+    
     return backend;
 }
 

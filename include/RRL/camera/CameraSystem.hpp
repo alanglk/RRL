@@ -3,6 +3,8 @@
 
 #include "RRL/camera/CameraModels.hpp"
 #include "RRL/camera/CameraConventions.hpp"
+
+#include "RRL/rhi/RHILayers.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
 
 #include <entt/entt.hpp>
@@ -25,7 +27,11 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target);
  * If the target_fbo is set to TARGET_NULL, the camera will be ignoned at the rendering phase.
  * If the target_fbo points to the same target as other camera, the other camera will point to TARGET_NULL.
  */
-entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& model = PerspectiveModel{}, rhi::RenderTargetHandle target_fbo = rhi::TARGET_MAIN);
+entt::entity SpawnCamera(entt::registry& registry, 
+    const CameraModelVariant& model = PerspectiveModel{}, 
+    rhi::RenderTargetHandle target_fbo = rhi::TARGET_MAIN,
+    rhi::RenderLayer layer = rhi::RenderLayer::LAYER_ALL
+);
 /**
  * @brief Removes the camera from the registry. This completely destroys the camera entity.
  */
@@ -47,6 +53,10 @@ void SetCameraModel(entt::registry& registry, entt::entity cam_entity, const Cam
  * If the target_fbo points to the same target as other camera, the other camera will point to TARGET_NULL.
  */
 void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::RenderTargetHandle target_fbo);
+/**
+ * @brief Sets the rendering culling mask of the camera
+ */
+void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RenderLayer layer);
 /**
  * @brief Sets the given entity as the primary camera, unsetting any other primary cameras.
  */

@@ -2,7 +2,10 @@
 #pragma once
 
 #include "RRL/data/MeshData.hpp"
+
+#include "RRL/rhi/RHILayers.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
+
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -33,6 +36,9 @@ struct MeshRuntimeComponent {
  */
 struct MeshLinkage {
     entt::entity mesh_asset { entt::null };
+
+    // What layer does this physical object belong to?
+    rhi::RenderLayer layer_mask { rhi::RenderLayer::LAYER_DEFAULT };
 };
 
 } // namespace rrl::data

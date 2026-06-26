@@ -4,8 +4,9 @@
 #include "RRL/data/ImageData.hpp"
 #include "RRL/data/MaterialData.hpp"
 #include "RRL/data/MeshData.hpp"
-#include "entt/entity/fwd.hpp"
-#include <cstdint>
+
+#include "RRL/rhi/RHILayers.hpp"
+
 #include <entt/entt.hpp>
 
 
@@ -98,7 +99,12 @@ void UpdateMesh(entt::registry& registry, entt::entity mesh_asset, MeshData&& me
  * @brief Binds a loaded mesh asset to a physical world entity.
  * This tells the RHI to draw the mesh at the entity's Transform location.
  */
-void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity mesh_asset);
+void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity mesh_asset, 
+              rhi::RenderLayer layer = rhi::RenderLayer::LAYER_DEFAULT);
+/**
+ * @brief Dynamically updates the culling layer of an already bound physical object.
+ */
+void SetMeshLayer(entt::registry& registry, entt::entity world_object, rhi::RenderLayer layer);
 
 
 
@@ -135,12 +141,17 @@ void BindMaterialTexture(entt::registry& registry, entt::entity material_asset, 
  */
 void BindUITexture(entt::registry& registry, entt::entity ui_object, entt::entity texture_asset,
                    float screen_x = 0.0f, float screen_y = 0.0f, 
-                   float screen_w = 1.0f, float screen_h = 1.0f);
+                   float screen_w = 1.0f, float screen_h = 1.0f,
+                   rhi::RenderLayer layer = rhi::RenderLayer::LAYER_UI);
+
 /**
  * @brief Updates the screen dimensions of an existing 2D UI layout.
  * Asserts if the entity does not have a UI texture bound to it.
  */
-void UpdateUILayout(entt::registry& registry, entt::entity ui_object, float screen_x, float screen_y, float screen_w, float screen_h);
+void UpdateUILayout(entt::registry& registry, entt::entity ui_object, 
+                    float screen_x, float screen_y, 
+                    float screen_w, float screen_h, 
+                    rhi::RenderLayer layer = rhi::RenderLayer::LAYER_UI);
 
 
 // --- GB Interface ------------------------------------------------

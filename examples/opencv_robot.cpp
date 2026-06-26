@@ -1,24 +1,22 @@
+// examples/opencv_robot.cpp
+
+#include <cmath>
+#include <entt/entt.hpp>
+#include <glm/glm.hpp>
+#include <FLogging/FLogging.hpp>
 
 
-
-
-#include "RRL/data/ImageData.hpp"
 #include "RRL/io/PrefabIO.hpp"
-#include "RRL/rhi/RHIBackend.hpp"
+
+#include "RRL/rhi/RHILayers.hpp"
 #include "RRL/tf/TransformTree.hpp"
 #include "RRL/data/AssetManager.hpp"
 #include "RRL/scene/SceneManager.hpp"
 #include "RRL/camera/CameraSystem.hpp"
+
 #include "RRL/rhi/RHIAPI.hpp"
-#include "entt/entity/fwd.hpp"
 
-
-
-#include <glm/glm.hpp>
-#include <entt/entt.hpp>
-#include <FLogging/FLogging.hpp>
-
-
+#include "RRL/debug/RHIDebugger.hpp"
 
 
 
@@ -160,23 +158,22 @@ private:
     // Robot private attribs
     entt::entity robot_instance = entt::null;
     entt::entity robot_cam      = entt::null;
-    entt::entity frustum_screen = entt::null;
+    entt::entity ui_screen      = entt::null;
     entt::entity fbo_tex        = entt::null;
     rrl::rhi::RenderTargetHandle cam_target = rrl::rhi::TARGET_NULL;
     
 public:
-    Robot() { 
-    }
+    Robot() = default;
+    entt::entity GetInstance() const { return robot_instance; }
 
     void Initialize(entt::registry& registry, 
-            uint32_t robot_cam_width, uint32_t robot_cam_height,
-            glm::vec3 pos = {0.0f, 0.0f, 0.0f}, 
-            glm::quat rot = {1.0f, 0.0f, 0.0f, 0.0f},
-            glm::vec3 scale = {1.0f, 1.0f, 1.0f}
-        ) {
-        
-
-        // Preload and Spawn
+        uint32_t robot_cam_width, uint32_t robot_cam_height,
+        glm::vec3 pos = {0.0f, 0.0f, 0.0f}, 
+        glm::quat rot = {1.0f, 0.0f, 0.0f, 0.0f},
+        glm::vec3 scale = {1.0f, 1.0f, 1.0f}
+    ) {
+    
+        // Preload and Spawn Robot
         PreloadRobotPrefab(registry);
         robot_instance = rrl::scene::SpawnPrefab(registry, robot_prefab_id);
         
@@ -184,20 +181,21 @@ public:
         rrl::tf::SetLocalRotation(registry, robot_instance, rot);
         rrl::tf::SetLocalScale(registry, robot_instance, scale);
         
-        // Spawn robot's cameras
+        // Create the Render Target FBO and spawn and attach the robot's camera
         cam_target = rrl::rhi::CreateRenderTarget(registry, robot_cam_width, robot_cam_height);
-        robot_cam = registry.create(); 
-        
         rrl::camera::PerspectiveModel camera_model;
         camera_model.fov_y_radians = glm::radians(60.0f);
         camera_model.aspect_ratio = static_cast<float>(robot_cam_width) / static_cast<float>(robot_cam_height);
         camera_model.z_near = 1.0f;     
         camera_model.z_far = 4000.0f;   
-
-        robot_cam = rrl::camera::SpawnCamera(registry, camera_model);
-        rrl::camera::SetCameraPositionAndLookAt(registry, robot_cam, {1.5f, 0.0f, 1.5f}, {5.0f, 0.0f, 1.5f});
-
-        // Frustum Screen
+        robot_cam = rrl::camera::SpawnCamera(registry, camera_model, cam_target, rrl::rhi::RenderLayer::LAYER_DEFAULT);
+        rrl::tf::AttachChild(registry, robot_instance, robot_cam, rrl::tf::TFDependencyPolicy::CASCADE_DELETE);
+        rrl::tf::SetLocalPosition(registry, robot_cam, {1.5f, 0.0f, 1.5f});
+        rrl::tf::SetLocalRotation(registry, robot_cam, glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
+        rrl::debug::rhi::SpawnCameraFrustum(registry, robot_cam, 3.0f);
+        
+        
+        // Robot 2D UI POV
         std::string fbo_id = "fbo_mirror_" + std::to_string(static_cast<uint32_t>(robot_instance));
         rrl::data::ImageData fbo_image_model;
         fbo_image_model.width = robot_cam_width;
@@ -208,17 +206,9 @@ public:
         fbo_image_model.data.resize(robot_cam_width * robot_cam_height * 3, 0);
         fbo_tex = rrl::data::CreateTexture(registry, fbo_id, std::move(fbo_image_model));
         
-        rrl::data::MaterialData screen_mat_data;
-        entt::entity screen_mat = rrl::data::CreateMaterial(registry, fbo_id + "_mat", screen_mat_data);
-        rrl::data::BindMaterialTexture(registry, screen_mat, fbo_tex, rrl::data::MaterialTextureType::ALBEDO);
-
-        entt::entity screen_mesh = rrl::data::CreateMesh(registry, "frustum_quad", GenerateFrustumScreenMesh());
-        rrl::data::BindMaterial(registry, screen_mesh, screen_mat);
-        
-        frustum_screen = registry.create();
-        rrl::data::BindMesh(registry, frustum_screen, screen_mesh);
-        glm::quat screen_rot = glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        rrl::tf::AddTransform(registry, frustum_screen, robot_cam, glm::vec3(2.0f, 0.0f, 0.0f), screen_rot);
+        // Bind the texture to a 2D UI screen layout in the bottom right corner
+        ui_screen = registry.create();
+        rrl::data::BindUITexture(registry, ui_screen, fbo_tex, 0.65f, 0.65f, 0.3f, 0.3f);
     }
     
     void Update(entt::registry& registry) {
@@ -230,9 +220,7 @@ public:
         }
     }
 
-    entt::entity GetInstance() const { return robot_instance; }
 };
-
 
 
 
@@ -262,6 +250,9 @@ int main() {
         return -1;
     }
 
+    rrl::debug::rhi::SpawnDebugGrid(registry, 20.0f, 20);
+    // rrl::rhi::SetDebugFlag(registry, rrl::rhi::RHIDebugFlag::FLAG_DRAW_WIREFRAMES, true);
+
 
     // Create and spawn the Robot
     LOG_INFO("[RRL Engine] Spawning robot...");
@@ -284,16 +275,23 @@ int main() {
     camera_model.z_far = 1000.0f;   
     entt::entity main_camera = rrl::camera::SpawnCamera(registry, camera_model);
     rrl::camera::SetCameraPositionAndLookAt(registry, main_camera, {-10.0f, 0.0f, 5.0f}, {0.0f, 0.0f, 0.0f});
+    rrl::camera::SetCameraLayer(registry, main_camera, 
+        rrl::rhi::RenderLayer::LAYER_DEFAULT | rrl::rhi::RenderLayer::LAYER_DEBUG
+    );
     
 
     // Main Loop
     LOG_INFO("[RRL Engine] Entering main loop...");
-    float rotation_z = 0.0f;
+    glm::vec3 start_pos = rrl::tf::GetLocalPosition(registry, robot.GetInstance());
+    float time = 0.0f;
     while (true) {
+        time += 0.01f;
+
         // Dynamically rotate the instance
-        rotation_z += 0.02f;
-        // rrl::tf::SetLocalRotation(registry, robot.GetInstance(), glm::angleAxis(rotation_z, glm::vec3(0.0f, 0.0f, 1.0f)));
-        rrl::tf::SetLocalRotation(registry, alien, glm::angleAxis(rotation_z, glm::vec3(0.0f, 0.0f, 1.0f)));
+        auto robot_pos = start_pos; 
+        robot_pos.x += 1.0f * std::sin(10.0f * time);
+        rrl::tf::SetLocalPosition(registry, robot.GetInstance(), robot_pos);
+        rrl::tf::SetLocalRotation(registry, alien, glm::angleAxis(time, glm::vec3(0.0f, 0.0f, 1.0f)));
 
 
         // Tick Engine Logic

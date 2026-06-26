@@ -2,7 +2,10 @@
 #pragma once
 
 #include "RRL/data/ImageData.hpp"
+
+#include "RRL/rhi/RHILayers.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
+
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -40,6 +43,9 @@ struct TextureLinkage {
     float screen_y { 0.0f };
     float screen_w { 1.0f }; // Full width default
     float screen_h { 1.0f }; // Full height default
+    
+    // What layer does this UI element belong to?
+    rhi::RenderLayer layer_mask { rhi::RenderLayer::LAYER_UI };
 };
 
 
