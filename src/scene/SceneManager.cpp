@@ -1,8 +1,10 @@
 // RRL/src/scene/SceneManager.cpp
 
 #include "RRL/scene/SceneManager.hpp"
-#include "RRL/data/AssetManager.hpp"
+#include "RRL/scene/SceneCache.hpp"
+
 #include "RRL/io/ImageIO.hpp"
+#include "RRL/data/AssetManager.hpp"
 #include "RRL/tf/TransformTree.hpp"
 
 
@@ -12,31 +14,6 @@
 
 
 namespace rrl::scene {
-
-
-
-// --- Cache Definitiosn -------------------------------------------
-struct PrefabNodeBlueprint {
-    std::string name; // this object (shape) specific name ('car', 'wheel'...)
-    entt::entity mesh_asset { entt::null };
-    
-    // Node default relative transform to its parent
-    glm::vec3 local_position {0.0f};
-    glm::quat local_rotation {1.0f, 0.0f, 0.0f, 0.0f};
-    glm::vec3 local_scale {1.0f};
-    
-    // Node's children
-    std::vector<PrefabNodeBlueprint> children;
-};
-
-struct PrefabBlueprint {
-    BlueprintID id; // Prefab ID
-    std::vector<PrefabNodeBlueprint> root_nodes;
-};
-
-struct PrefabCache {
-    std::unordered_map<BlueprintID, PrefabBlueprint> blueprints;
-};
 
 
 // --- Helpers -----------------------------------------------------
@@ -74,8 +51,6 @@ static PrefabNodeBlueprint ProcessIONodeRecursive(
             } else {
                 LOG_WARN("[SceneManager] Submesh inside '{}' requested unknown material hash: ID {}.", node_bp.name, mat_name_hash);
             }
-            node_bp.mesh_asset = mesh_asset;
-            data::IncrementAssetRef(registry, mesh_asset);
         }
         node_bp.mesh_asset = mesh_asset;
         

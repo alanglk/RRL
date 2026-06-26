@@ -1,7 +1,7 @@
 // RRL/src/data/AssetManager.hpp
 
 #include "RRL/data/AssetManager.hpp"
-#include "FLogging/FLogging.hpp"
+#include "RRL/data/AssetCache.hpp"
 #include "RRL/data/AssetReferenceCounter.hpp"
 
 #include "RRL/data/TextureComponents.hpp"
@@ -13,24 +13,14 @@
 #include "RRL/rhi/RHIAPI.hpp"
 
 
-
-#include <unordered_map>
 #include "RRL/DebugMacros.hpp"
+#include <FLogging/FLogging.hpp>
+
 #include "entt/entity/entity.hpp"
 
 
 namespace rrl::data {
 
-
-/**
- * @brief Holds the running asset cached context.
- */
-struct AssetCache {
-    std::unordered_map<TextureID, entt::entity> textures;
-    std::unordered_map<MeshID, entt::entity> meshes;
-    std::unordered_map<MaterialID, entt::entity> materials;
-    AssetGCPolicy gc_policy { AssetGCPolicy::CASCADE_DELETE };
-};
 
 
 // --- Hardware Resource Cleaners ----------------------------------
