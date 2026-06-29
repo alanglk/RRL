@@ -59,6 +59,34 @@ struct ImageData {
     // Image raw data blob container
     std::vector<uint8_t> data; 
     size_t GetDataSize() const { return data.size(); }
+    
+    /**
+     * @brief Checks if the image model is properly initialized.
+     * It validates dimensions, enum bounds, and buffer sizing (if data is populated).
+     */
+    bool IsImageModelValid() const {
+        // Dimensions must be non-zero
+        if (width == 0 || height == 0) return false;
+
+        // Validate enums (protects against static_cast garbage)
+        bool valid_type = (data_type == ImageDataType::UINT8 || data_type == ImageDataType::UINT16 || data_type == ImageDataType::FLOAT32);
+        bool valid_channels = (static_cast<uint8_t>(channels) >= 1 && static_cast<uint8_t>(channels) <= 4);
+        bool valid_color = (static_cast<uint8_t>(color_layout) <= 6);
+        
+        if (!valid_type || !valid_channels || !valid_color) return false;
+
+        // If the data buffer is populated, its size must exactly match the metadata footprint
+        if (!data.empty()) {
+            size_t bytes_per_channel = 1;
+            if (data_type == ImageDataType::UINT16) bytes_per_channel = 2;
+            else if (data_type == ImageDataType::FLOAT32) bytes_per_channel = 4;
+
+            size_t expected_size = static_cast<size_t>(width) * height * static_cast<uint8_t>(channels) * bytes_per_channel;
+            if (data.size() != expected_size) return false;
+        }
+
+        return true;
+    }
 };
 
 

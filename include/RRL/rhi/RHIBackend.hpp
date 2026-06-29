@@ -52,10 +52,11 @@ enum class RHIRenderingMode : uint8_t {
  * @brief Runtime flags for the RHI to toggle debug rendering features.
  */
 enum class RHIDebugFlag : uint32_t {
-    FLAG_NONE              = 0,
-    FLAG_DRAW_WIREFRAMES   = 1 << 0,  // Render meshes as wireframes (except point topology)
-    FLAG_DISABLE_TEXTURES  = 1 << 1,  // Skip texture sampling (draw base colors only)
-    FLAG_SHOW_UVS          = 1 << 2   // Render UV coordinates as RGB colors
+    FLAG_NONE                   = 0,
+    FLAG_DRAW_WIREFRAMES        = 1 << 0,   // Render meshes as wireframes (except point topology)
+    FLAG_DISABLE_TEXTURES       = 1 << 1,   // Skip texture sampling (draw base colors only)
+    FLAG_SHOW_UVS               = 1 << 2,   // Render UV coordinates as RGB colors
+    FLAG_AFFINE_INTERPOLATION   = 1 << 3,   // Use Affine interpolation instead of baycentric interpolation (texture mapping)
 };
 
 /**
@@ -96,7 +97,7 @@ struct RHIBackend {
     void (*DestroyMesh)(entt::registry& registry, MeshHandle handle) { nullptr };
 
 
-    // --- Materials ---
+    // Materials
     MaterialHandle (*CreateMaterial)(entt::registry& registry, const data::MaterialData& material_data) { nullptr };
     void (*UpdateMaterial)(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data) { nullptr };
     void (*DestroyMaterial)(entt::registry& registry, MaterialHandle handle) { nullptr };
@@ -106,7 +107,7 @@ struct RHIBackend {
     data::ImageData (*GetTargetImage)(entt::registry& registry, RenderTargetHandle handle) { nullptr };
 
 
-    // --- Debugging ---
+    // Debugging
     void (*SetDebugFlag)(entt::registry& registry, RHIDebugFlag flag, bool enable) { nullptr };
     RHIDebugFlag (*GetActiveDebugFlags)(entt::registry& registry) { nullptr };
 

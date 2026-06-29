@@ -34,10 +34,29 @@ endif()
 
 
 # --- Building options --------------------------------------------
-option(RRL_SHARED   "Build RRL as a shared library" OFF )
-option(RRL_TESTING  "Build RRL tests" OFF )
-option(RRL_EXAMPLES "Build RRL examples" OFF)
-option(RRL_BUILD_BACKEND_OPENCV "Build the OpenCV Rasterizer RHI Backend" ON)
+option(RRL_SHARED                   "Build RRL as a shared library" OFF )
+option(RRL_TESTING                  "Build RRL tests" OFF )
+option(RRL_EXAMPLES                 "Build RRL examples" OFF)
+option(RRL_ENABLE_NATIVE_ARCH       "Optimize for the host CPU architecture (breaks portability to older CPUs)" OFF)
+
+# RHI Backend Toggles
+option(RRL_BUILD_BACKEND_OPENCV     "Build the OpenCV Software Rasterizer presentation layer" ON)
+option(RRL_BUILD_BACKEND_OPENGL     "Build the hardware-accelerated OpenGL backend" OFF)
+option(RRL_BUILD_BACKEND_WEBGPU     "Build the WebGPU backend for WASM targets" OFF)
+option(RRL_TARGET_ESP32             "Force build for ESP32 target (uses fixed-point math if implemented)" OFF)
+
+
+# --- Native ARCH -------------------------------------------------
+if(RRL_ENABLE_NATIVE_ARCH)
+    message(STATUS "RRL: Native architecture optimization enabled.")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        add_compile_options(-march=native)
+    elseif(MSVC)
+        # MSVC does not have a direct equivalent to -march=native. 
+        # You typically have to specify /arch:AVX2 explicitly.
+        # add_compile_options(/arch:AVX2) 
+    endif()
+endif()
 
 
 # --- Installation Variables --------------------------------------
@@ -83,6 +102,7 @@ set(RRL_SOURCES
     src/scene/SceneManager.cpp
 
     src/rhi/RHIAPI.cpp
+    src/rhi/software/SWRRenderer.cpp
     
     src/debug/TFDebugger.cpp
     src/debug/AssetManagerDebugger.cpp
@@ -112,8 +132,7 @@ if(RRL_TESTING)
 endif()
 
 
-# --- Library Dependencies ----------------------------------------
-
+# --- Base Dependencies -------------------------------------------
 ## EnTT: located in third_party/entt 
 set(ENTT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/entt")
 if(EXISTS "${ENTT_DIR}/CMakeLists.txt")
@@ -149,22 +168,93 @@ else()
     message(FATAL_ERROR "FLogging source missing at ${FL_DIR}. Have you called 'git submodule update --init --recursive'?")
 endif()
 
-## OpenCV RHI Backend
-if(RRL_BUILD_BACKEND_OPENCV)
-    find_package(OpenCV QUIET)
-    if(OpenCV_FOUND)
-        message(STATUS "RRL: OpenCV found. Enabling OpenCV RHI backend.")
-        list(APPEND RRL_PRIVATE_LIBRARIES ${OpenCV_LIBS})
-        list(APPEND RRL_PRIVATE_INCLUDE_DIRS ${OpenCV_INCLUDE_DIRS})
-        list(APPEND RRL_PUBLIC_COMPILE_DEFS RRL_RHI_OPENCV)
-        list(APPEND RRL_SOURCES 
-            src/rhi/opencv/OpenCVRenderer.cpp
-        )
+
+
+# --- RHI Backends ------------------------------------------------
+## Software Rendering
+list(APPEND RRL_SOURCES src/rhi/software/SWRRenderer.cpp)
+
+if(RRL_TARGET_ESP32 OR ESP_PLATFORM)
+    # TARGET: ESP32 Microcontroller ()
+    if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/rhi/software/SWRMath_ESP32.cpp")
+        message(STATUS "RRL [Software RHI]: ESP32 target detected. Enabling Fixed-Point Math.")
+        list(APPEND RRL_PRIVATE_COMPILE_DEFS RRL_SWR_FIXED_POINT RRL_RHI_ESP32)
+        list(APPEND RRL_SOURCES src/rhi/software/SWRMath_ESP32.cpp)
     else()
-        message(WARNING "RRL: OpenCV not found! Disabling the OpenCV RHI backend despite RRL_BUILD_BACKEND_OPENCV being ON.")
-        set(RRL_BUILD_BACKEND_OPENCV OFF CACHE BOOL "Build the OpenCV Rasterizer RHI Backend" FORCE)
+        message(WARNING "RRL [Software RHI]: ESP32 target detected, but SWRMath_ESP32.cpp is missing! Defaulting to Scalar Float Math.")
+        list(APPEND RRL_SOURCES src/rhi/software/SWRMath_Scalar.cpp)
+    endif()
+
+elseif(EMSCRIPTEN)
+    # TARGET: WebAssembly (WASM)
+    message(STATUS "RRL [Software RHI]: WebAssembly target detected. Defaulting to Scalar Float Math.")
+    list(APPEND RRL_PRIVATE_COMPILE_DEFS RRL_RHI_WASM)
+    list(APPEND RRL_SOURCES src/rhi/software/SWRMath_Scalar.cpp)
+    # add src/rhi/software/SWRMath_WasmSIMD.cpp here on the future
+    
+    # HTML5 Canvas Presentation Layer
+    # list(APPEND RRL_SOURCES src/rhi/wasm/WASMCanvasRenderer.cpp)
+
+else()
+    # TARGET: Desktop (Linux, Mac, Windows)
+    
+    # Math Selection
+    find_package(hwy QUIET)
+    if(hwy_FOUND OR HWY_FOUND OR TARGET hwy::hwy OR TARGET hwy)
+        message(STATUS "RRL [Software RHI]: Desktop target. Google Highway found. Enabling SIMD Math.")
+        list(APPEND RRL_PRIVATE_COMPILE_DEFS RRL_ENABLE_HIGHWAY)
+        list(APPEND RRL_SOURCES src/rhi/software/SWRMath_Highway.cpp)
+        
+        if(TARGET hwy::hwy)
+            list(APPEND RRL_PRIVATE_LIBRARIES hwy::hwy)
+        elseif(TARGET hwy)
+            list(APPEND RRL_PRIVATE_LIBRARIES hwy)
+        else()
+            list(APPEND RRL_PRIVATE_LIBRARIES ${HWY_LIBRARIES})
+        endif()
+    else()
+        message(STATUS "RRL [Software RHI]: Desktop target. Google Highway not found. Defaulting to Scalar Math.")
+        list(APPEND RRL_SOURCES src/rhi/software/SWRMath_Scalar.cpp)
+    endif()
+
+    # Presentation Layer
+    if(RRL_BUILD_BACKEND_OPENCV)
+        find_package(OpenCV QUIET)
+        if(OpenCV_FOUND)
+            message(STATUS "RRL [Software RHI]: OpenCV found. Enabling OpenCV Presentation Layer.")
+            list(APPEND RRL_PRIVATE_LIBRARIES ${OpenCV_LIBS})
+            list(APPEND RRL_PRIVATE_INCLUDE_DIRS ${OpenCV_INCLUDE_DIRS})
+            list(APPEND RRL_PUBLIC_COMPILE_DEFS RRL_RHI_OPENCV)
+            list(APPEND RRL_SOURCES src/rhi/opencv/OpenCVRenderer.cpp)
+        else()
+            message(WARNING "RRL [Software RHI]: OpenCV not found! Disabling OpenCV presentation layer.")
+            set(RRL_BUILD_BACKEND_OPENCV OFF CACHE BOOL "Build the OpenCV Rasterizer RHI Backend" FORCE)
+        endif()
     endif()
 endif()
+
+## OpenGL Rendering
+if(RRL_BUILD_BACKEND_OPENGL)
+    # OpenGL is strictly a Desktop target (or GLES for embedded, handled later)
+    message(STATUS "RRL [Hardware RHI]: OpenGL backend enabled.")
+    list(APPEND RRL_PUBLIC_COMPILE_DEFS RRL_RHI_OPENGL)
+    
+    # find_package(OpenGL REQUIRED)
+    # list(APPEND RRL_PRIVATE_LIBRARIES OpenGL::GL)
+    # list(APPEND RRL_SOURCES src/rhi/opengl/OpenGLRenderer.cpp)
+endif()
+
+# WebGPU Rendering 
+if(RRL_BUILD_BACKEND_WEBGPU AND EMSCRIPTEN)
+    message(STATUS "RRL [Hardware RHI]: WebGPU backend enabled for WebAssembly target.")
+    list(APPEND RRL_PUBLIC_COMPILE_DEFS RRL_RHI_WEBGPU)
+    
+    # Emscripten specific flags for WebGPU
+    # list(APPEND RRL_PRIVATE_COMPILE_OPTIONS "-s USE_WEBGPU=1")
+    # list(APPEND RRL_PRIVATE_LINK_OPTIONS "-s USE_WEBGPU=1")
+    # list(APPEND RRL_SOURCES src/rhi/webgpu/WebGPURenderer.cpp)
+endif()
+
 
 
 # --- Library Target ----------------------------------------------
