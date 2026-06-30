@@ -8,6 +8,7 @@
 #include "RRL/data/ImageData.hpp"
 #include <algorithm>
 
+#include "RRL/DebugMacros.hpp"
 
 namespace rrl::rhi::software {
 
@@ -96,6 +97,28 @@ static inline glm::vec2 GetUV(const SWRMesh& mesh, uint32_t index) {
 
     return glm::vec2(mesh.uvs[b_idx].x[l_idx], mesh.uvs[b_idx].y[l_idx]);
     #endif
+}
+static inline glm::vec4 GetColor(const SWRMesh& mesh, uint32_t index) {
+    if (mesh.colors.empty()) return glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    size_t b_idx = index / SWRMesh::BlockSize;
+    size_t l_idx = index % SWRMesh::BlockSize;
+    
+#ifdef RRL_SWR_FIXED_POINT
+    constexpr float INV_FIXED_SCALE = 1.0f / 65536.0f;
+    return glm::vec4(
+        static_cast<float>(mesh.colors[b_idx].x[l_idx]) * INV_FIXED_SCALE,
+        static_cast<float>(mesh.colors[b_idx].y[l_idx]) * INV_FIXED_SCALE,
+        static_cast<float>(mesh.colors[b_idx].z[l_idx]) * INV_FIXED_SCALE,
+        static_cast<float>(mesh.colors[b_idx].w[l_idx]) * INV_FIXED_SCALE
+    );
+#else
+    return glm::vec4(
+        mesh.colors[b_idx].x[l_idx],
+        mesh.colors[b_idx].y[l_idx],
+        mesh.colors[b_idx].z[l_idx],
+        mesh.colors[b_idx].w[l_idx]
+    );
+#endif
 }
 
 
@@ -197,13 +220,19 @@ static void RasterizeTriangle(
     }
     #endif
 
-    // Get UVs
+    // Get UVs and Colors
     glm::vec2 uv0(0.0f), uv1(0.0f), uv2(0.0f);
     bool use_textures = !disable_textures && active_albedo && !active_albedo->data.empty() && !mesh.uvs.empty();
     if (use_textures || show_uvs) {
         uv0 = GetUV(mesh, i0);
         uv1 = GetUV(mesh, i1);
         uv2 = GetUV(mesh, i2);
+    }
+    glm::vec4 c0(1.0f), c1(1.0f), c2(1.0f);
+    if (!mesh.colors.empty()) {
+        c0 = GetColor(mesh, i0);
+        c1 = GetColor(mesh, i1);
+        c2 = GetColor(mesh, i2);
     }
 
     // Pixel Fragment Loop
@@ -226,8 +255,9 @@ static void RasterizeTriangle(
 
             // Fragment shading logic
             float perspective_w = 1.0f / (w0 * inv_w0 + w1 * inv_w1 + w2 * inv_w2);
-            glm::vec4 final_color = mat_base_color;
-            
+            glm::vec4 interp_c = perspective_w * (w0 * c0 * inv_w0 + w1 * c1 * inv_w1 + w2 * c2 * inv_w2);
+            glm::vec4 final_color = mat_base_color * interp_c;
+
             if (show_uvs && !disable_textures && !use_textures) {
                 final_color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
             }
@@ -236,6 +266,7 @@ static void RasterizeTriangle(
             if (use_textures) {
                 float interp_u = perspective_w * (w0 * uv0.x * inv_w0 + w1 * uv1.x * inv_w1 + w2 * uv2.x * inv_w2);
                 float interp_v = perspective_w * (w0 * uv0.y * inv_w0 + w1 * uv1.y * inv_w1 + w2 * uv2.y * inv_w2);
+                // interp_v = 1.0f - interp_v; // Flip V
 
                 // Texture Wrapping
                 interp_u = interp_u - std::floor(interp_u);
@@ -402,51 +433,101 @@ void SWRVertexShader(const SWRMesh& mesh, const glm::mat4& mvp, SWRVertexBuffer&
         }
     }
 }
-void SWRRender3DMesh(rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+void SWRRender3DMesh(
+    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
     const SWRMesh& mesh, const SWRVertexBuffer& vertex_buffer,
+    uint32_t index_offset, uint32_t index_count,
     const glm::vec4& mat_base_color, const rrl::data::ImageData* active_albedo,
     const ColorFormatCache& rt_format, const ColorFormatCache& tex_format,
     bool disable_textures, bool show_uvs, bool runtime_affine_override, bool draw_wireframes
 ) {
     if (mesh.indices.empty()) return;
+    
+    RRL_ASSERT(render_target.IsImageModelValid(), "[SWRRender3DMesh] Received a non valid render_target model");
+    RRL_ASSERT( (   render_target.color_layout != rrl::data::ImageColorLayout::NONE && 
+                    render_target.color_layout != rrl::data::ImageColorLayout::GRAY && 
+                    render_target.color_layout != rrl::data::ImageColorLayout::HSV      ), 
+        "[SWRRender3DMesh] Received a render_target with non supported color space layout");
+    RRL_ASSERT(render_target.data_type == rrl::data::ImageDataType::UINT8, "[SWRRender3DMesh] Received a render_target with data type not equal to UINT8");
+    RRL_ASSERT(depth_buffer.IsImageModelValid(), "[SWRRender3DMesh] Received a non valid depth_buffer model");
+    RRL_ASSERT(depth_buffer.color_layout == rrl::data::ImageColorLayout::NONE, "[SWRRender3DMesh] Received a depth_buffer with non supported color space layout");
+    RRL_ASSERT(depth_buffer.data_type == rrl::data::ImageDataType::FLOAT32, "[SWRRender3DMesh] Received a depth_buffer with data type not equal to FLOAT32");
 
     // Viewport scaling
     float half_w = static_cast<float>(render_target.width) * 0.5f;
     float half_h = static_cast<float>(render_target.height) * 0.5f;
 
-    // Iterate to assemble triangles
-    for (size_t i = 0; i < mesh.indices.size(); i += 3) {
-        uint32_t i0 = mesh.indices[i];
-        uint32_t i1 = mesh.indices[i+1];
-        uint32_t i2 = mesh.indices[i+2];
+    size_t step = (mesh.topology == rrl::data::MeshTopology::TRIANGLES) ? 3 : 2;
+    uint32_t end_idx = std::min(index_offset + index_count, static_cast<uint32_t>(mesh.indices.size()));
+    for (size_t i = index_offset; i < end_idx; i += step) {
+        
+        // Render triangles (triangle assembling)
+        if (step == 3 && i + 2 < mesh.indices.size()) {
+            uint32_t i0 = mesh.indices[i];
+            uint32_t i1 = mesh.indices[i+1];
+            uint32_t i2 = mesh.indices[i+2];
 
-        // Near-Plane Culling
-        // .x, .y, .z are NDC coordinates. .w is the original Clip Space W!
-        const glm::vec4& v0 = vertex_buffer.ndc_positions[i0];
-        const glm::vec4& v1 = vertex_buffer.ndc_positions[i1];
-        const glm::vec4& v2 = vertex_buffer.ndc_positions[i2];
-        if (v0.w <= 0.001f || v1.w <= 0.001f || v2.w <= 0.001f) continue;
+            // Near-Plane Culling
+            // .x, .y, .z are NDC coordinates. .w is the original Clip Space W!
+            const glm::vec4& v0 = vertex_buffer.ndc_positions[i0];
+            const glm::vec4& v1 = vertex_buffer.ndc_positions[i1];
+            const glm::vec4& v2 = vertex_buffer.ndc_positions[i2];
+            if (v0.w <= 0.001f || v1.w <= 0.001f || v2.w <= 0.001f) continue;
 
-        // Viewport Transform (NDC -> Screen Space)
-        glm::vec2 p0((v0.x + 1.0f) * half_w, (1.0f - v0.y) * half_h);
-        glm::vec2 p1((v1.x + 1.0f) * half_w, (1.0f - v1.y) * half_h);
-        glm::vec2 p2((v2.x + 1.0f) * half_w, (1.0f - v2.y) * half_h);
+            // Viewport Transform (NDC -> Screen Space)
+            glm::vec2 p0((v0.x + 1.0f) * half_w, (1.0f - v0.y) * half_h);
+            glm::vec2 p1((v1.x + 1.0f) * half_w, (1.0f - v1.y) * half_h);
+            glm::vec2 p2((v2.x + 1.0f) * half_w, (1.0f - v2.y) * half_h);
 
-        // Backface Culling 
-        float area = (p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y);
-        if (area >= -0.00001f) continue; // Counter-Clockwise winding order:
+            // Backface Culling (do not apply if draw_wireframes)
+            if (!draw_wireframes) {
+                float area = (p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y);
+                if (area >= -0.00001f) continue; // Counter-Clockwise winding order:
+            }
 
-        // Fragment Shader
-        RasterizeTriangle(
-            render_target, depth_buffer,
-            v0, v1, v2,
-            p0, p1, p2,
-            mesh, vertex_buffer, i0, i1, i2,
-            mat_base_color, active_albedo, 
-            rt_format, tex_format,
-            disable_textures, show_uvs, runtime_affine_override
-        );
+            if (draw_wireframes) {
+                glm::vec3 p0_3d(p0.x, p0.y, v0.z);
+                glm::vec3 p1_3d(p1.x, p1.y, v1.z);
+                glm::vec3 p2_3d(p2.x, p2.y, v2.z);
+                
+                // Blend base color with vertex colors for the wireframe lines
+                glm::vec4 c0 = GetColor(mesh, i0);
+                glm::vec3 mat_color = glm::vec3(mat_base_color * c0); 
+                DrawWireframeTriangle(render_target, depth_buffer, p0_3d, p1_3d, p2_3d, mat_color, rt_format);
+
+            } 
+            else {
+                RasterizeTriangle(
+                    render_target, depth_buffer,
+                    v0, v1, v2, p0, p1, p2,
+                    mesh, vertex_buffer, i0, i1, i2,
+                    mat_base_color, active_albedo, 
+                    rt_format, tex_format,
+                    disable_textures, show_uvs, runtime_affine_override
+                );
+            }
+        }
+        
+        // Render lines
+        else if (step == 2 && i + 1 < mesh.indices.size()) {
+            uint32_t i0 = mesh.indices[i];
+            uint32_t i1 = mesh.indices[i+1];
+
+            const glm::vec4& v0 = vertex_buffer.ndc_positions[i0];
+            const glm::vec4& v1 = vertex_buffer.ndc_positions[i1];
+            
+            if (v0.w <= 0.001f || v1.w <= 0.001f) continue;
+
+            glm::vec3 p0((v0.x + 1.0f) * half_w, (1.0f - v0.y) * half_h, v0.z);
+            glm::vec3 p1((v1.x + 1.0f) * half_w, (1.0f - v1.y) * half_h, v1.z);
+
+            glm::vec4 c0 = GetColor(mesh, i0);
+            glm::vec3 mat_color = glm::vec3(mat_base_color * c0); 
+
+            RasterizeLine(render_target, depth_buffer, p0, p1, mat_color, rt_format);
+        }
     }
+
 }
     
 

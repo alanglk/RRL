@@ -49,15 +49,15 @@ enum class ImageColorLayout : uint8_t {
  * @brief Image data container. Holds metadata and a raw contiguous byte payload.
  */
 struct ImageData {
-    uint32_t width {0};             // Image width
-    uint32_t height {0};            // Image height
-    ImageChannelLayout channels;    // Image number of channels
-    ImageDataType data_type;        // Image payload data type
-    ImageColorLayout color_layout;  // Image color space layout (defines the stride)
+    uint32_t width                  { 0 };                          // Image width
+    uint32_t height                 { 0 };                          // Image height
+    ImageChannelLayout channels     { ImageChannelLayout::CH_1 };   // Image number of channels
+    ImageDataType data_type         { ImageDataType::FLOAT32 };     // Image payload data type
+    ImageColorLayout color_layout   { ImageColorLayout::NONE };     // Image color space layout (defines the stride)
     
     
     // Image raw data blob container
-    std::vector<uint8_t> data; 
+    std::vector<uint8_t> data = { }; 
     size_t GetDataSize() const { return data.size(); }
     
     /**

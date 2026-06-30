@@ -46,8 +46,10 @@ void SWRVertexShader(const SWRMesh& mesh, const glm::mat4& mvp, SWRVertexBuffer&
  *  - runtime_affine_override:  Enable affine interpolation instead of default baycentric interpolation
  *  - draw_wireframes:          Just draw the mesh wireframes
  */
-void SWRRender3DMesh(rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+void SWRRender3DMesh(
+    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
     const SWRMesh& mesh, const SWRVertexBuffer& vertex_buffer,
+    uint32_t index_offset, uint32_t index_count,
     const glm::vec4& mat_base_color, const rrl::data::ImageData* active_albedo,
     const ColorFormatCache& rt_format, const ColorFormatCache& tex_format,
     bool disable_textures, bool show_uvs, bool runtime_affine_override, bool draw_wireframes

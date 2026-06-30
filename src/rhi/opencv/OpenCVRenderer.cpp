@@ -84,7 +84,7 @@ static bool Initialize(entt::registry& registry, const RHIConfig& config) {
     rt.color_layout = data::ImageColorLayout::BGR;
     rt.data.resize(config.width * config.height * 3, 30);
     ctx.render_targets[TARGET_MAIN] = std::move(rt);
-    ctx.rt_formats[TARGET_MAIN]     = software::GetColorFormatCache(data::ImageColorLayout::BGR, data::ImageChannelLayout::CH_3);
+    ctx.rt_formats[TARGET_MAIN]     = software::GetColorFormatCache(rt.color_layout, rt.channels);
     RRL_ASSERT(rt.IsImageModelValid(), "[OpernCV RHI] Error creating the TARGET_MAIN image");
     
     // Create Depth buffer
@@ -93,6 +93,7 @@ static bool Initialize(entt::registry& registry, const RHIConfig& config) {
     depth.height = config.height; 
     depth.data_type = data::ImageDataType::FLOAT32;
     depth.channels = data::ImageChannelLayout::CH_1; 
+    depth.color_layout = data::ImageColorLayout::NONE; 
     depth.data.resize(config.width * config.height * sizeof(float));
     ctx.depth_buffers[TARGET_MAIN] = std::move(depth);
     RRL_ASSERT(depth.IsImageModelValid(), "[OpernCV RHI] Error creating the TARGET_MAIN depth buffer");
@@ -223,6 +224,7 @@ static void RenderFrame(entt::registry& registry) {
 
                     software::SWRRender3DMesh(
                         render_target, depth_buffer, mesh, ctx.working_vertex_buffer,
+                        submesh.index_offset, submesh.index_count, 
                         mat_base_color, active_albedo, 
                         ctx.rt_formats[cam.target_fbo], tex_format,
                         disable_textures, show_uvs, runtime_affine_override, draw_wireframes
@@ -282,15 +284,15 @@ static RenderTargetHandle CreateTarget(entt::registry& registry, uint32_t width,
     rt.channels = data::ImageChannelLayout::CH_3;
     rt.color_layout = data::ImageColorLayout::BGR;
     rt.data.resize(width * height * 3, 0);
-    
-    ctx.render_targets[handle] = std::move(rt);
-    ctx.rt_formats[handle] = software::GetColorFormatCache(data::ImageColorLayout::BGR, data::ImageChannelLayout::CH_3);
+    ctx.render_targets[handle]  = std::move(rt);
+    ctx.rt_formats[handle]      = software::GetColorFormatCache(rt.color_layout, rt.channels);
     RRL_ASSERT(rt.IsImageModelValid(), "[OpernCV RHI] Error creating the '{}' FBO target image");
     
     data::ImageData depth;
     depth.width = width; depth.height = height; 
     depth.data_type = data::ImageDataType::FLOAT32;
     depth.channels = data::ImageChannelLayout::CH_1;
+    rt.color_layout = data::ImageColorLayout::NONE;
     depth.data.resize(width * height * sizeof(float));
     ctx.depth_buffers[handle] = std::move(depth);
     RRL_ASSERT(depth.IsImageModelValid(), "[OpernCV RHI] Error creating the '{}' FBO target depth buffer");
@@ -333,6 +335,7 @@ static TextureHandle CreateTexture(entt::registry& registry, const data::ImageDa
     auto& ctx = registry.ctx().get<OpenCVContext>();
     
     TextureHandle handle = ctx.next_tex_handle++;
+    ctx.textures[handle] = data::ImageData{};
     UpdateTexture(registry, handle, image_data);
     return handle;
 }
