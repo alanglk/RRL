@@ -15,7 +15,6 @@
 #include "RRL/camera/CameraSystem.hpp"
 
 #include "RRL/rhi/RHIAPI.hpp"
-
 #include "RRL/debug/RHIDebugger.hpp"
 
 
@@ -251,7 +250,7 @@ int main() {
     }
 
     rrl::debug::rhi::SpawnDebugGrid(registry, 20.0f, 20);
-    // rrl::rhi::SetDebugFlag(registry, rrl::rhi::RHIDebugFlag::FLAG_DRAW_WIREFRAMES, true);
+    // rrl::debug::rhi::SetDebugFlag(registry, rrl::rhi::RHIDebugFlag::FLAG_DRAW_WIREFRAMES, true);
 
 
     // Create and spawn the Robot

@@ -9,6 +9,8 @@
 
 
 #include "RRL/rhi/RHIAPI.hpp"
+#include "RRL/debug/RHIDebugger.hpp"
+
 #include "RRL/data/AssetManager.hpp"
 #include "RRL/scene/SceneManager.hpp"
 #include "RRL/io/PrefabIO.hpp"
@@ -40,6 +42,7 @@ int main() {
         LOG_ERROR("[RRL Engine] Failed to initialize RHI backend!");
         return -1;
     }
+    // rrl::debug::rhi::SetDebugFlag(registry, rrl::rhi::RHIDebugFlag::FLAG_AFFINE_INTERPOLATION, true);
 
 
     // Setup Camera
