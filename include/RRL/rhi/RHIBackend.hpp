@@ -31,23 +31,6 @@ using MaterialHandle = uint32_t;
 constexpr MaterialHandle MATERIAL_NULL = 0xFFFFFFFF;  // Null handle
 
 
-
-/**
- * @brief Types of rendering backends.
- */
-enum class RHIBackendType : uint8_t {
-    NONE = 0,
-    OPENCV = 1      // Use OpenCV for rendering
-};
-
-/**
- * @brief Defines the rendering mode of the RHI
- */
-enum class RHIRenderingMode : uint8_t {
-    WINDOW = 0,     // Opens an OS window (cv::imshow, GLFW)
-    HEADLESS = 1    // Pure background rendering 
-};
-
 /**
  * @brief Runtime flags for the RHI to toggle debug rendering features.
  */
@@ -59,26 +42,52 @@ enum class RHIDebugFlag : uint32_t {
     FLAG_AFFINE_INTERPOLATION   = 1 << 3,   // Use Affine interpolation instead of baycentric interpolation (texture mapping)
 };
 
+
+
 /**
- * @brief Defines how the RHI context is created.
+ * @brief Defines the rendering mode of the RHI
  */
-struct RHIConfig {
+enum class RHIWindowType : uint8_t {
+    HEADLESS = 0,   // No window, renders to memmory
+    OPENCV = 1,     // cv::imshow window
+    GLFW = 2        // Hardware accelerated window
+};
+
+/**
+ * @brief Types of rendering backends.
+ */
+enum class RHIBackendType : uint8_t {
+    NONE = 0,
+    SOFTWARE = 1,   // CPU SIMD Rasterizer (defaults to scalar if SIMD is not supported)
+    OPENGL = 2      // GPU OpenGL FBOs
+};
+
+
+/**
+ * @brief Generic OS Window Interface
+ */
+struct RHIWindow {
+    RHIWindowType type { RHIWindowType::HEADLESS };
     uint32_t width { 800 };
     uint32_t height { 600 };
-    std::string title { "RRL Context" };
-    RHIRenderingMode mode { RHIRenderingMode::WINDOW };
+    void* native_handle { nullptr }; // GLFWwindow* or const char* for OpenCV window name
+
+    // bool (*Initialize)(RHIWindow* self, const char* title, uint32_t w, uint32_t h) { nullptr };
+    // bool (*PollEvents)(RHIWindow* self) { nullptr }; // Returns false if closed
+    // void (*Shutdown)(RHIWindow* self) { nullptr };
 };
+
 
 /**
  * @brief Dispatch table for rendering backends.
  */
 struct RHIBackend {
-    RHIBackendType type {RHIBackendType::NONE};
+    RHIBackendType type { RHIBackendType::NONE };
     
     // Function pointers (defined for each backend type)
     
     // Lifecycle
-    bool (*Initialize)(entt::registry& registry, const RHIConfig& config) { nullptr };
+    bool (*Initialize)(entt::registry& registry, uint32_t render_width, uint32_t render_height, const RHIWindow* window) { nullptr };
     void (*Shutdown)(entt::registry& registry) { nullptr };
     void (*RenderFrame)(entt::registry& registry) { nullptr };
     
@@ -103,8 +112,13 @@ struct RHIBackend {
     void (*DestroyMaterial)(entt::registry& registry, MaterialHandle handle) { nullptr };
 
 
+    // Presentation
     // Reads rendered data from the RHI back to CPU RAM
     data::ImageData (*GetTargetImage)(entt::registry& registry, RenderTargetHandle handle) { nullptr };
+    // Asks the backend to swap its TARGET_MAIN buffer to the attached window
+    void (*Present)(entt::registry& registry) { nullptr };
+    // Alert the backend that the used window (also headless dummy window) has been destroyed
+    void (*OnWindowDestroyed)(entt::registry& registry, const RHIWindow* window) { nullptr };
 
 
     // Debugging

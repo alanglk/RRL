@@ -33,12 +33,13 @@ int main() {
     rrl::data::InitializeAssetManager(registry);
     rrl::tf::RegisterTFActions(registry);
     rrl::scene::InitializeSceneManager(registry);
-    if (!rrl::rhi::LoadBackend(rrl::rhi::RHIBackendType::OPENCV, registry)) {
-        LOG_ERROR("[RRL Engine] Failed to load OpenCV RHI backend!");
+    rrl::rhi::RHIWindow main_window = rrl::rhi::CreateWindow(rrl::rhi::RHIWindowType::OPENCV);
+    rrl::rhi::InitializeWindow(main_window, "RRL - Rungholt Instancing Viewer", window_w, window_h);
+    if (!rrl::rhi::LoadBackend(rrl::rhi::RHIBackendType::SOFTWARE, registry)) {
+        LOG_ERROR("[RRL Engine] Failed to load RHI backend!");
         return -1;
     }
-    rrl::rhi::RHIConfig config{ window_w, window_h, "RRL - Rungholt Instancing Viewer", rrl::rhi::RHIRenderingMode::WINDOW };
-    if (!rrl::rhi::Initialize(registry, config)) {
+    if (!rrl::rhi::Initialize(registry, &main_window)) {
         LOG_ERROR("[RRL Engine] Failed to initialize RHI backend!");
         return -1;
     }
@@ -48,7 +49,7 @@ int main() {
     // Setup Camera
     rrl::camera::PerspectiveModel camera_model;
     camera_model.fov_y_radians = glm::radians(60.0f);
-    camera_model.aspect_ratio = float(config.width) / float(config.height);
+    camera_model.aspect_ratio = float(main_window.width) / float(main_window.height);
     camera_model.z_near = 1.0f;     
     camera_model.z_far = 4000.0f;   
     entt::entity main_camera = rrl::camera::SpawnCamera(registry, camera_model);
@@ -81,6 +82,8 @@ int main() {
 
         rrl::rhi::SyncResources(registry);
         rrl::rhi::RenderFrame(registry);
+        rrl::rhi::Present(registry);
+        rrl::rhi::PollWindowEvents(main_window); 
     }
 
 

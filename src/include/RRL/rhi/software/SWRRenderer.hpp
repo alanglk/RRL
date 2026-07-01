@@ -32,6 +32,47 @@ ColorFormatCache GetColorFormatCache(rrl::data::ImageColorLayout layout, rrl::da
  */
 void LoadMeshDataIntoSWRMesh(const rrl::data::MeshData& mesh_data, SWRMesh& mesh_swr);
 
+
+// Primitive drawing
+
+/**
+ * @brief Rasterizes a 3D point as a fixed-radius 2D circle with depth testing.
+ */
+void SWRDrawPoint(
+    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    const glm::vec3& p, int radius, const glm::vec3& color, const ColorFormatCache& format
+);
+
+/**
+ * @brief Rasterizes a 3D line using Bresenham's algorithm with depth testing.
+ */
+void SWRDrawLine(
+    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    const glm::vec3& p0, const glm::vec3& p1, 
+    const glm::vec3& color, const ColorFormatCache& format
+);
+
+/**
+ * @brief Rasterizes an unfilled triangle using Bresenham lines.
+ */
+void SWRDrawWireframeTriangle(
+    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& p2,
+    const glm::vec3& color, const ColorFormatCache& format
+);
+
+/**
+ * @brief Resizes and blits a 2D texture onto the target framebuffer.
+ */
+void SWRDrawTexture2D(
+    rrl::data::ImageData& render_target, const rrl::data::ImageData& source_tex,
+    int px, int py, int pw, int ph,
+    const ColorFormatCache& rt_format, const ColorFormatCache& tex_format
+);
+
+
+// 3D Rendering
+
 /**
  * @brief Software rendering vertex shader. It handles the NDC vertex projection.
  */

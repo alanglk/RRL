@@ -5,6 +5,17 @@
 
 namespace rrl::rhi {
 
+// --- Window ------------------------------------------------------
+RHIWindow CreateWindow(RHIWindowType window_type);
+bool InitializeWindow(RHIWindow& window, const char* title, uint32_t w, uint32_t h);
+bool PollWindowEvents(RHIWindow& window);
+/**
+ * @brief Destroys a RHI window. This also tells the 
+ * backend that the window is no longer available.
+ */
+void DestroyWindow(entt::registry& registry, RHIWindow& window);
+
+
 // --- Backend -----------------------------------------------------
 /**
  * @brief Swaps the active rendering backend at runtime.
@@ -16,19 +27,25 @@ bool LoadBackend(RHIBackendType target_backend, entt::registry& registry);
 /**
  * @brief Returns the currently active backend type.
  */
-RHIBackendType GetCurrentBackend();
+RHIBackendType GetCurrentBackendType();
 
 
 
 // --- Lifecycle ---------------------------------------------------
 /**
  * @brief Initializes the currently loaded rendering backend.
- * Automatically provisions the TARGET_MAIN render target.
+ * Automatically provisions the TARGET_MAIN render target setting 
+ * the rendering dimensions to the provided window handle.
  */
-bool Initialize(entt::registry& registry, const RHIConfig& config);
+bool Initialize(entt::registry& registry, const RHIWindow* window);
 
 /**
- * @brief Cleans up memory, contexts, and destroys any open windows.
+ * @brief Initializes the currently loaded rendering backend.
+ */
+bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t render_height, const RHIWindow* window);
+
+/**
+ * @brief Cleans up memory and contexts
  */
 void Shutdown(entt::registry& registry);
 
@@ -105,11 +122,15 @@ void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const data:
 void DestroyMaterial(entt::registry& registry, MaterialHandle handle);
 
 
-// --- Retrieve Rendered Data --------------------------------------
+// --- Presentation ------------------------------------------------
 /**
  * @brief Reads rendered data from the RHI back to CPU RAM.
  */
 data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle);
+/**
+ * @brief Asks the backend to swap its TARGET_MAIN buffer to the attached window.
+ */
+void Present(entt::registry& registry);
 
 
 } // namespace rrl::rhi 

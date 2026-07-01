@@ -73,14 +73,24 @@ void SyntheticFrameGeneratorWorker(size_t stream_index) {
 }
 
 int main() {
+    flogging::AddConsoleSink();
     flogging::InitLogger(flogging::LogLevel::Warn, flogging::BackendType::StdFormat);
     entt::registry registry;
 
-    data::InitializeAssetManager(registry);
-    rhi::LoadBackend(rhi::RHIBackendType::OPENCV, registry);
+    uint32_t window_w       = 1280;
+    uint32_t window_h       = 960;
 
-    rhi::RHIConfig config{1280, 960, "RRL - Multi-Stream Hardened Test", rhi::RHIRenderingMode::WINDOW};
-    if (!rhi::Initialize(registry, config)) return -1;
+    data::InitializeAssetManager(registry);
+    rrl::rhi::RHIWindow main_window = rrl::rhi::CreateWindow(rrl::rhi::RHIWindowType::OPENCV);
+    rrl::rhi::InitializeWindow(main_window, "RRL - Multi-Stream Hardened Test", window_w, window_h);
+    if (!rrl::rhi::LoadBackend(rrl::rhi::RHIBackendType::SOFTWARE, registry)) {
+        LOG_ERROR("[RRL Engine] Failed to load RHI backend!");
+        return -1;
+    }
+    if (!rrl::rhi::Initialize(registry, &main_window)) {
+        LOG_ERROR("[RRL Engine] Failed to initialize RHI backend!");
+        return -1;
+    }
 
     std::vector<entt::entity> ui_textures(NUM_STREAMS);
     g_stream_corridors.reserve(NUM_STREAMS);
@@ -144,6 +154,8 @@ int main() {
 
         rhi::SyncResources(registry);
         rhi::RenderFrame(registry);
+        rhi::Present(registry);
+        rrl::rhi::PollWindowEvents(main_window); 
 
         // Metrics output loop
         auto current_time = std::chrono::high_resolution_clock::now();
@@ -169,5 +181,6 @@ int main() {
         if (thread.joinable()) thread.join();
     }
 
+    flogging::ResetLogger();
     return 0;
 }

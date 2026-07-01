@@ -1,22 +1,129 @@
 // RRL/src/rhi/RHIAPI.cpp
 
 #include "RRL/rhi/RHIAPI.hpp"
+#include "RRL/rhi/RHIBackend.hpp"
 #include "RRL/rhi/RHIBackendManager.hpp"
 
 #include "RRL/data/SynchronizationSystems.hpp"
 
 #include <FLogging/FLogging.hpp>
 #include "RRL/DebugMacros.hpp"
+#include "entt/entity/entity.hpp"
 
 
-// Forward declare the compile-time available backends
-// (do not include heavy headers)
-#ifdef RRL_RHI_OPENCV
-    namespace rrl::rhi::opencv { RHIBackend CreateBackend(); }
+// --- Backend Factories -------------------------------------------
+// Forward declare the compile-time available Backend factories
+namespace rrl::rhi::software { RHIBackend CreateSoftwareBackend(); }
+
+
+// --- Window Factories --------------------------------------------
+// Forward declare the compile-time available Window factories
+#ifdef RRL_BUILD_WINDOW_OPENCV 
+namespace rrl::rhi::window::opencv {
+    bool Initialize(RHIWindow& window, const char* title, uint32_t w, uint32_t h);
+    bool PollEvents(RHIWindow& window);
+    void Shutdown(RHIWindow& window);
+}
 #endif
+#ifdef RRL_BUILD_WINDOW_GLFW
+namespace rrl::rhi::window::glfw {
+    bool Initialize(RHIWindow& window, const char* title, uint32_t w, uint32_t h);
+    bool PollEvents(RHIWindow& window);
+    void Shutdown(RHIWindow& window);
+}
+#endif
+
+
+
     
 
 namespace rrl::rhi {
+
+// --- Window ------------------------------------------------------
+RHIWindow CreateWindow(RHIWindowType window_type) {
+    RHIWindow win{};
+    win.type = window_type;
+    return win;
+}
+bool InitializeWindow(RHIWindow& window, const char* title, uint32_t w, uint32_t h) {
+    switch (window.type) {
+        case RHIWindowType::HEADLESS:
+            window.width = w;
+            window.height = h;
+            window.native_handle = nullptr;
+            return true;
+
+        case RHIWindowType::OPENCV:
+            #ifdef RRL_BUILD_WINDOW_OPENCV
+            return window::opencv::Initialize(window, title, w, h);
+            #else
+            LOG_ERROR("InitializeWindow: OpenCV support not compiled in this build.");
+            return false;
+            #endif
+
+        case RHIWindowType::GLFW:
+            #ifdef RRL_BUILD_WINDOW_GLFW
+            return window::glfw::Initialize(window, title, w, h);
+            #else
+            LOG_ERROR("InitializeWindow: GLFW support not compiled in this build.");
+            return false;
+            #endif
+    }
+    return false;
+}
+bool PollWindowEvents(RHIWindow& window) {
+    if (window.type != RHIWindowType::HEADLESS) {
+        RRL_ASSERT(window.native_handle != nullptr, "PollWindowEvents: Received a non initialized window!");
+    }
+
+    switch (window.type) {
+        case RHIWindowType::HEADLESS:
+            return true;
+
+        case RHIWindowType::OPENCV:
+            #ifdef RRL_BUILD_WINDOW_OPENCV
+            return window::opencv::PollEvents(window);
+            #else
+            return false;
+            #endif
+
+        case RHIWindowType::GLFW:
+            #ifdef RRL_BUILD_WINDOW_GLFW
+            return window::glfw::PollEvents(window);
+            #else
+            return false;
+            #endif
+    }
+    return false;
+}
+void DestroyWindow(entt::registry& registry, RHIWindow& window) {
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    if (backend.type != RHIBackendType::NONE && backend.OnWindowDestroyed != nullptr) {
+        backend.OnWindowDestroyed(registry, &window);
+    }
+
+    switch (window.type) {
+        case RHIWindowType::HEADLESS:
+            break;
+
+        case RHIWindowType::OPENCV:
+            #ifdef RRL_BUILD_WINDOW_OPENCV
+            window::opencv::Shutdown(window);
+            #endif
+            break;
+
+        case RHIWindowType::GLFW:
+            #ifdef RRL_BUILD_WINDOW_GLFW
+            window::glfw::Shutdown(window);
+            #endif
+            break;
+    }
+
+    window.native_handle = nullptr;
+    window.width = 0;
+    window.height = 0;
+}
+
 
 
 // --- Backend -----------------------------------------------------
@@ -26,34 +133,40 @@ bool LoadBackend(RHIBackendType target_backend, entt::registry& registry) {
         return true; // Already loaded
     }
 
+    // TODO: Implement hot-swapping logic (extract assets -> shutdown -> switch -> push assets)
+
     switch (target_backend) {
-        case RHIBackendType::OPENCV:
-        #ifdef RRL_RHI_OPENCV
-            RHIBackendManager::Instance().SetBackend(rrl::rhi::opencv::CreateBackend());
+        case RHIBackendType::SOFTWARE:
+            RHIBackendManager::Instance().SetBackend(rrl::rhi::software::CreateSoftwareBackend());
             return true;
-        #else
-            LOG_ERROR("LoadBackend failed. OpenCV RHI backend was not compiled.");
-            return false;
-        #endif
             
-        default: {
-            LOG_ERROR("LoadBackend failed. Unknonw or not available requested RHI backend.");
+        case RHIBackendType::OPENGL:
+            // RHIBackendManager::Instance().SetBackend(rrl::rhi::opengl::CreateOpenGLBackend());
+            // return true;
+            
+        default:
+            LOG_ERROR("LoadBackend failed. Unknown or unavailable requested RHI backend.");
             return false;
-        }
     }
-    return false;
 }
-RHIBackendType GetCurrentBackend() {
+RHIBackendType GetCurrentBackendType() {
     return RHIBackendManager::Instance().GetBackend().type;
 }
 
 
 
 // --- Lifecycle ---------------------------------------------------
-bool Initialize(entt::registry& registry, const RHIConfig& config) {
+bool Initialize(entt::registry& registry, const RHIWindow* window) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
     RRL_ASSERT(backend.Initialize != nullptr, "RHI Initialize called but no backend is loaded!");
-    return backend.Initialize(registry, config);
+    RRL_ASSERT(window != nullptr, "RHI Initialize called but no window is provided!");
+    return backend.Initialize(registry, window->width, window->height, window);
+}
+bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t render_height, const RHIWindow* window) {
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.Initialize != nullptr, "RHI Initialize called but no backend is loaded!");
+    RRL_ASSERT(window != nullptr, "RHI Initialize called but no window is provided!");
+    return backend.Initialize(registry, render_width, render_height, window);
 }
 void Shutdown(entt::registry& registry) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
@@ -154,6 +267,12 @@ data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle hand
         return backend.GetTargetImage(registry, handle);
     }
     return data::ImageData{}; // Return empty image
+}
+void Present(entt::registry& registry) {
+    auto& backend = RHIBackendManager::Instance().GetBackend();
+    if (backend.Present != nullptr) {
+        backend.Present(registry);
+    }
 }
 
 

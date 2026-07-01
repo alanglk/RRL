@@ -10,6 +10,11 @@
 
 #include "RRL/DebugMacros.hpp"
 
+
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+#include <stb_image_resize2.h>
+
+
 namespace rrl::rhi::software {
 
 
@@ -78,7 +83,14 @@ static inline void SetPixel(rrl::data::ImageData& render_target, int x, int y, u
         render_target.data[offset + 3] = 255; 
     }
 }
-
+static inline stbir_pixel_layout GetSTBPixelLayout(rrl::data::ImageColorLayout layout, int channels) {
+    if (channels == 3) {
+        return (layout == rrl::data::ImageColorLayout::BGR) ? STBIR_BGR : STBIR_RGB;
+    } else if (channels == 4) {
+        return (layout == rrl::data::ImageColorLayout::BGRA) ? STBIR_BGRA : STBIR_RGBA;
+    }
+    return (channels == 1) ? STBIR_1CHANNEL : STBIR_2CHANNEL;
+}
 
 
 // --- SWRMesh Helpers ---------------------------------------------
@@ -124,68 +136,6 @@ static inline glm::vec4 GetColor(const SWRMesh& mesh, uint32_t index) {
 
 
 // --- Rasterization Helpers ---------------------------------------
-static void RasterizeLine(
-    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
-    const glm::vec3& p0, const glm::vec3& p1, 
-    const glm::vec3& color, const ColorFormatCache& format
-) {
-    int x0 = static_cast<int>(p0.x);
-    int y0 = static_cast<int>(p0.y);
-    float z0 = p0.z;
-
-    int x1 = static_cast<int>(p1.x);
-    int y1 = static_cast<int>(p1.y);
-    float z1 = p1.z;
-
-    int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-    int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy, e2;
-
-    int dist = std::max(std::abs(dx), std::abs(dy));
-
-    uint8_t r = static_cast<uint8_t>(std::clamp(color.r * 255.0f, 0.0f, 255.0f));
-    uint8_t g = static_cast<uint8_t>(std::clamp(color.g * 255.0f, 0.0f, 255.0f));
-    uint8_t b = static_cast<uint8_t>(std::clamp(color.b * 255.0f, 0.0f, 255.0f));
-    
-    // Single point fallback
-    if (dist == 0) {
-        if (x0 >= 0 && x0 < render_target.width && y0 >= 0 && y0 < render_target.height) {
-            if (z0 <= GetDepth(depth_buffer, x0, y0)) {
-                GetDepth(depth_buffer, x0, y0) = z0;
-                SetPixel(render_target, x0, y0, r, g, b, format);
-            }
-        }
-        return;
-    }
-
-    // Bresenham Interpolation
-    for (int i = 0; i <= dist; i++) {
-        if (x0 >= 0 && x0 < render_target.width && y0 >= 0 && y0 < render_target.height) {
-            float t = static_cast<float>(i) / dist;
-            float z = z0 * (1.0f - t) + z1 * t;
-
-            // Z-bias so wireframes cleanly render over solid geometry
-            if (z - 0.0005f <= GetDepth(depth_buffer, x0, y0)) {
-                GetDepth(depth_buffer, x0, y0) = z; 
-                SetPixel(render_target, x0, y0, r, g, b, format);
-            }
-        }
-        if (x0 == x1 && y0 == y1) break;
-        e2 = 2 * err;
-        if (e2 >= dy) { err += dy; x0 += sx; }
-        if (e2 <= dx) { err += dx; y0 += sy; }
-    }
-}
-
-static void DrawWireframeTriangle(
-    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
-    const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& p2,
-    const glm::vec3& color, const ColorFormatCache& format
-) {
-    RasterizeLine(render_target, depth_buffer, p0, p1, color, format);
-    RasterizeLine(render_target, depth_buffer, p1, p2, color, format);
-    RasterizeLine(render_target, depth_buffer, p2, p0, color, format);
-}
 static void RasterizeTriangle(
     rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
     const glm::vec4& v0, const glm::vec4& v1, const glm::vec4& v2,  // NDC + ClipW for depth interp
@@ -376,6 +326,165 @@ void LoadMeshDataIntoSWRMesh(const rrl::data::MeshData& mesh_data, SWRMesh& mesh
         #endif
     }
 }
+
+
+
+// Primitive drawing
+
+void SWRDrawPoint(
+    rrl::data::ImageData& rt, rrl::data::ImageData& depth, 
+    const glm::vec3& p, int radius, const glm::vec3& color, const ColorFormatCache& format) 
+{
+    int cx = static_cast<int>(p.x);
+    int cy = static_cast<int>(p.y);
+    float z = p.z;
+
+    int min_x = std::max(0, cx - radius);
+    int max_x = std::min(static_cast<int>(rt.width) - 1, cx + radius);
+    int min_y = std::max(0, cy - radius);
+    int max_y = std::min(static_cast<int>(rt.height) - 1, cy + radius);
+    int r2 = radius * radius;
+    
+    uint8_t r_col = static_cast<uint8_t>(std::clamp(color.r * 255.0f, 0.0f, 255.0f));
+    uint8_t g_col = static_cast<uint8_t>(std::clamp(color.g * 255.0f, 0.0f, 255.0f));
+    uint8_t b_col = static_cast<uint8_t>(std::clamp(color.b * 255.0f, 0.0f, 255.0f));
+
+    for (int y = min_y; y <= max_y; ++y) {
+        int dy = y - cy;
+        int dy2 = dy * dy;
+        for (int x = min_x; x <= max_x; ++x) {
+            int dx = x - cx;
+            if (dx * dx + dy2 <= r2) {
+                if (z <= GetDepth(depth, x, y)) {
+                    GetDepth(depth, x, y) = z;
+                    SetPixel(rt, x, y, r_col, g_col, b_col, format);
+                }
+            }
+        }
+    }
+}
+void SWRDrawLine(
+    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    const glm::vec3& p0, const glm::vec3& p1, 
+    const glm::vec3& color, const ColorFormatCache& format) 
+{
+    int x0 = static_cast<int>(p0.x);
+    int y0 = static_cast<int>(p0.y);
+    float z0 = p0.z;
+
+    int x1 = static_cast<int>(p1.x);
+    int y1 = static_cast<int>(p1.y);
+    float z1 = p1.z;
+
+    int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, e2;
+
+    int dist = std::max(std::abs(dx), std::abs(dy));
+
+    uint8_t r = static_cast<uint8_t>(std::clamp(color.r * 255.0f, 0.0f, 255.0f));
+    uint8_t g = static_cast<uint8_t>(std::clamp(color.g * 255.0f, 0.0f, 255.0f));
+    uint8_t b = static_cast<uint8_t>(std::clamp(color.b * 255.0f, 0.0f, 255.0f));
+    
+    // Single point fallback
+    if (dist == 0) {
+        if (x0 >= 0 && x0 < render_target.width && y0 >= 0 && y0 < render_target.height) {
+            if (z0 <= GetDepth(depth_buffer, x0, y0)) {
+                GetDepth(depth_buffer, x0, y0) = z0;
+                SetPixel(render_target, x0, y0, r, g, b, format);
+            }
+        }
+        return;
+    }
+
+    // Bresenham Interpolation
+    for (int i = 0; i <= dist; i++) {
+        if (x0 >= 0 && x0 < render_target.width && y0 >= 0 && y0 < render_target.height) {
+            float t = static_cast<float>(i) / dist;
+            float z = z0 * (1.0f - t) + z1 * t;
+
+            // Z-bias so wireframes cleanly render over solid geometry
+            if (z - 0.0005f <= GetDepth(depth_buffer, x0, y0)) {
+                GetDepth(depth_buffer, x0, y0) = z; 
+                SetPixel(render_target, x0, y0, r, g, b, format);
+            }
+        }
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+void SWRDrawWireframeTriangle(
+    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& p2,
+    const glm::vec3& color, const ColorFormatCache& format) 
+{
+    SWRDrawLine(render_target, depth_buffer, p0, p1, color, format);
+    SWRDrawLine(render_target, depth_buffer, p1, p2, color, format);
+    SWRDrawLine(render_target, depth_buffer, p2, p0, color, format);
+}
+void SWRDrawTexture2D(
+    rrl::data::ImageData& rt, const rrl::data::ImageData& tex,
+    int px, int py, int pw, int ph,
+    const ColorFormatCache& rt_fmt, const ColorFormatCache& tex_fmt)
+{
+    // Bounds check
+    if (tex.data.empty() || pw <= 0 || ph <= 0) return;
+    if (px >= static_cast<int>(rt.width) || py >= static_cast<int>(rt.height) || px + pw <= 0 || py + ph <= 0) return;
+
+
+    // Check if we actually need to resize
+    bool needs_resize = (static_cast<uint32_t>(pw) != tex.width || static_cast<uint32_t>(ph) != tex.height);
+    std::vector<uint8_t> resized_tex;
+    const uint8_t* src_data = tex.data.data(); // Default to original data
+    if (needs_resize) {
+        resized_tex.resize(pw * ph * tex_fmt.channels);
+        stbir_pixel_layout layout = GetSTBPixelLayout(tex.color_layout, tex_fmt.channels);
+        stbir_resize_uint8_linear(
+            tex.data.data(), tex.width, tex.height, 0,
+            resized_tex.data(), pw, ph, 0, 
+            layout
+        );
+        
+        src_data = resized_tex.data(); // Point to the newly resized data
+    }
+
+    // Manual blit (uses src_data, which points to either the original or resized buffer)
+    for (int y = 0; y < ph; ++y) {
+        int dst_y = py + y;
+        if (dst_y < 0 || dst_y >= static_cast<int>(rt.height)) continue;
+
+        for (int x = 0; x < pw; ++x) {
+            int dst_x = px + x;
+            if (dst_x < 0 || dst_x >= static_cast<int>(rt.width)) continue;
+
+            size_t src_offset = (y * pw + x) * tex_fmt.channels;
+            size_t dst_offset = (dst_y * rt.width + dst_x) * rt_fmt.channels;
+
+            if (tex_fmt.channels == 4 && src_data[src_offset + 3] < 128) continue; 
+
+            // Extract channels using the explicit offsets computed from the source metadata layout
+            uint8_t r = src_data[src_offset + tex_fmt.r_off];
+            uint8_t g = src_data[src_offset + tex_fmt.g_off];
+            uint8_t b = src_data[src_offset + tex_fmt.b_off];
+
+            // Map variables into the explicit offset positions required by the destination layout
+            rt.data[dst_offset + rt_fmt.r_off] = r;
+            rt.data[dst_offset + rt_fmt.g_off] = g;
+            rt.data[dst_offset + rt_fmt.b_off] = b;
+            
+            if (rt_fmt.channels == 4) {
+                rt.data[dst_offset + 3] = 255;
+            }
+        }
+    }
+}
+
+
+
+// 3D Rendering
+
 void SWRVertexShader(const SWRMesh& mesh, const glm::mat4& mvp, SWRVertexBuffer& out_buffer) {
     out_buffer.Resize(mesh.active_vertex_count);
 
@@ -493,7 +602,7 @@ void SWRRender3DMesh(
                 // Blend base color with vertex colors for the wireframe lines
                 glm::vec4 c0 = GetColor(mesh, i0);
                 glm::vec3 mat_color = glm::vec3(mat_base_color * c0); 
-                DrawWireframeTriangle(render_target, depth_buffer, p0_3d, p1_3d, p2_3d, mat_color, rt_format);
+                SWRDrawWireframeTriangle(render_target, depth_buffer, p0_3d, p1_3d, p2_3d, mat_color, rt_format);
 
             } 
             else {
@@ -524,7 +633,7 @@ void SWRRender3DMesh(
             glm::vec4 c0 = GetColor(mesh, i0);
             glm::vec3 mat_color = glm::vec3(mat_base_color * c0); 
 
-            RasterizeLine(render_target, depth_buffer, p0, p1, mat_color, rt_format);
+            SWRDrawLine(render_target, depth_buffer, p0, p1, mat_color, rt_format);
         }
     }
 
