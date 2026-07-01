@@ -1,6 +1,6 @@
 // RRL/src/rhi/software/SWRMath_Highway.cpp
 
-#ifndef RRL_ENABLE_HIGHWAY
+#ifndef RRL_BUILD_SWR_SIMD_BACKEND 
     #error "This file (SWRMath_Highway.cpp) requires Google Highway support."
 #endif
 

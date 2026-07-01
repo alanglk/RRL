@@ -8,7 +8,9 @@
 #include "RRL/tf/TransformTree.hpp"
 
 
+#include <FLogging/FLogging.hpp>
 #include "RRL/DebugMacros.hpp"
+
 #include <sstream>
 #include <vector>
 

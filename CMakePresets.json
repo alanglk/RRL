@@ -15,7 +15,8 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
-        "RRL_BUILD_BACKEND_OPENCV": "ON"
+        "RRL_BUILD_WINDOW_OPENCV": "ON",
+        "RRL_BUILD_SWR_SIMD_BACKEND": "ON"
       }
     },
     {
@@ -27,6 +28,7 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "RRL_TESTING": "ON",
         "RRL_EXAMPLES": "ON",
+        "RRL_BENCHMARKS": "OFF",
         "RRL_SHARED": "OFF"
       }
     },
@@ -39,6 +41,21 @@
         "CMAKE_BUILD_TYPE": "Release",
         "RRL_TESTING": "ON",
         "RRL_EXAMPLES": "ON",
+        "RRL_BENCHMARKS": "OFF",
+        "RRL_SHARED": "OFF"
+      }
+    },
+    {
+      "name": "benchmark",
+      "displayName": "Benchmark Build",
+      "description": "Optimized release build targeting host architecture for performance profiling.",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "RRL_ENABLE_NATIVE_ARCH": "ON",
+        "RRL_BENCHMARKS": "ON",
+        "RRL_TESTING": "OFF",
+        "RRL_EXAMPLES": "OFF",
         "RRL_SHARED": "OFF"
       }
     },
@@ -51,6 +68,7 @@
         "CMAKE_BUILD_TYPE": "Release",
         "RRL_TESTING": "OFF",
         "RRL_EXAMPLES": "OFF",
+        "RRL_BENCHMARKS": "OFF",
         "RRL_SHARED": "ON",
         "RRL_INSTALL": "ON"
       }
@@ -64,6 +82,10 @@
     {
       "name": "test",
       "configurePreset": "test"
+    },
+    {
+      "name": "benchmark",
+      "configurePreset": "benchmark"
     },
     {
       "name": "release",

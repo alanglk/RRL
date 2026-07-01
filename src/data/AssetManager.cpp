@@ -314,7 +314,7 @@ void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity 
 }
 void SetMeshLayer(entt::registry& registry, entt::entity world_object, rhi::RenderLayer layer) {
     RRL_ASSERT(registry.valid(world_object), "SetMeshLayer: Invalid world object entity!");
-    RRL_ASSERT_HAS_COMPONENT(registry, world_object, MeshLinkage, "SetMeshLayer: Provided world object has not a MeshLinkage. Have you called BindMesh()?")
+    RRL_ASSERT_HAS_COMPONENT(registry, world_object, MeshLinkage, "SetMeshLayer: Provided world object has not a MeshLinkage. Have you called BindMesh()?");
     if (auto* link = registry.try_get<MeshLinkage>(world_object)) {
         link->layer_mask = layer;
     }
