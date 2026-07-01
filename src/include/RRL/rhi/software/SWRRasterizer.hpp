@@ -1,4 +1,4 @@
-// RRL/include/rhi/software/SWRTypes.hpp
+// RRL/include/rhi/software/SWRRasterizer.hpp
 #pragma once
 
 #include "RRL/data/ImageData.hpp"
@@ -17,6 +17,23 @@ struct ColorFormatCache {
     uint8_t g_off;
     uint8_t b_off;
 };
+
+
+// --- Pixel Helpers -----------------------------------------------
+inline size_t GetPixelOffset(int x, int y, int width, int channels) {
+    return (y * width + x) * channels;
+}
+inline float& GetDepth(rrl::data::ImageData& depth_buffer, int x, int y) {
+    float* depth_data = reinterpret_cast<float*>(depth_buffer.data.data());
+    return depth_data[y * depth_buffer.width + x];
+}
+inline void SetPixel(rrl::data::ImageData& render_target, int x, int y, uint8_t r, uint8_t g, uint8_t b, const ColorFormatCache& format) {
+    size_t offset = GetPixelOffset(x, y, render_target.width, format.channels);
+    render_target.data[offset + format.r_off] = r;
+    render_target.data[offset + format.g_off] = g;
+    render_target.data[offset + format.b_off] = b;
+    if (format.channels == 4) render_target.data[offset + 3] = 255;
+}
 
 
 
@@ -77,6 +94,21 @@ void SWRDrawTexture2D(
  * @brief Software rendering vertex shader. It handles the NDC vertex projection.
  */
 void SWRVertexShader(const SWRMesh& mesh, const glm::mat4& mvp, SWRVertexBuffer& out_buffer);
+
+/**
+ * @brief Software rendering triangle rasterization.
+ */
+void RasterizeTriangle(
+    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    const glm::vec4& v0, const glm::vec4& v1, const glm::vec4& v2, 
+    const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2, 
+    const glm::vec2& uv0, const glm::vec2& uv1, const glm::vec2& uv2, 
+    const glm::vec4& c0, const glm::vec4& c1, const glm::vec4& c2, 
+    float iw0, float iw1, float iw2,
+    const glm::vec4& mat_base_color, const rrl::data::ImageData* active_albedo,
+    const ColorFormatCache& rt_format, const ColorFormatCache& tex_format,
+    bool disable_textures, bool show_uvs, bool runtime_affine_override 
+);
 
 /**
  * @brief Software rendering triangle assembly and rasterization (primitive assembly + fragment shader)

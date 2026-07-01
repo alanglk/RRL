@@ -1,6 +1,6 @@
 {
   "context": {
-    "date": "2026-07-01T15:49:04+02:00",
+    "date": "2026-07-01T17:00:15+02:00",
     "host_name": "alanglkPC",
     "executable": "./build/benchmarks/simd/bin/bm_swr_opencv_rungholt",
     "num_cpus": 4,
@@ -32,7 +32,7 @@
         "num_sharing": 4
       }
     ],
-    "load_avg": [1.22021,1.14551,1.35938],
+    "load_avg": [2.08691,1.64648,1.47412],
     "library_build_type": "release"
   },
   "benchmarks": [
@@ -46,10 +46,10 @@
       "repetition_index": 0,
       "threads": 1,
       "iterations": 1000,
-      "real_time": 3.8420110143617427e+02,
-      "cpu_time": 3.8410730984699967e+02,
+      "real_time": 3.3646730112695144e+02,
+      "cpu_time": 3.3634822044499992e+02,
       "time_unit": "ms",
-      "FPS": 2.6034391285037692e+00
+      "FPS": 2.9731092338677061e+00
     }
   ]
 }

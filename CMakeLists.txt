@@ -108,7 +108,6 @@ set(RRL_SOURCES
     src/scene/SceneManager.cpp
 
     src/rhi/RHIAPI.cpp
-    src/rhi/software/SWRRenderer.cpp
     
     src/debug/TFDebugger.cpp
     src/debug/AssetManagerDebugger.cpp
@@ -181,13 +180,19 @@ endif()
 ## Base Software Rendering + appropiate math
 # Assign the proper math source based on the Highway dependency
 list(APPEND RRL_SOURCES 
-    src/rhi/software/SWRRenderer.cpp
+    src/rhi/software/SWRRasterizer.cpp
     src/rhi/software/SoftwareRenderer.cpp
 )
 if(RRL_BUILD_SWR_SIMD_BACKEND)
-    list(APPEND RRL_SOURCES src/rhi/software/SWRMath_Highway.cpp)
+    list(APPEND RRL_SOURCES 
+        src/rhi/software/SWRMath_Highway.cpp
+        src/rhi/software/SWRRasterizer_Highway.cpp
+    )
 else()
-    list(APPEND RRL_SOURCES src/rhi/software/SWRMath_Scalar.cpp)
+    list(APPEND RRL_SOURCES 
+        src/rhi/software/SWRMath_Scalar.cpp
+        src/rhi/software/SWRRasterizer_Scalar.cpp
+    )
 endif()
 
 ## Target Dispatching

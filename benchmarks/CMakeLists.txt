@@ -23,6 +23,7 @@ if (NOT RRL_DESKTOP_TARGET)
     return()
 endif()
 
+
 # --- Enable Benchmarking (Fetch Google Benchmark) ----------------
 message(STATUS "RRL [Benchmarks]: Fetching Google Benchmark framework...")
 include(FetchContent)
@@ -71,6 +72,7 @@ if(RRL_BENCHMARK_SOURCES)
         if(RRL_BENCHMARK_INCLUDES)
             target_include_directories(${target_name} PRIVATE ${RRL_BENCHMARK_INCLUDES})
         endif()
+        set_property(TARGET ${target_name} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
         
     endforeach()
 

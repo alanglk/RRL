@@ -10,7 +10,7 @@
 
 #include "RRL/rhi/RHILayers.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
-#include "RRL/rhi/software/SWRRenderer.hpp"
+#include "RRL/rhi/software/SWRRasterizer.hpp"
 
 #include <FLogging/FLogging.hpp>
 #include "RRL/DebugMacros.hpp"

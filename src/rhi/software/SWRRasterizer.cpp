@@ -1,6 +1,6 @@
-// RRL/include/rhi/software/SWRRenderer.cpp
+// RRL/include/rhi/software/SWRRasterizer.cpp
 
-#include "RRL/rhi/software/SWRRenderer.hpp"
+#include "RRL/rhi/software/SWRRasterizer.hpp"
 
 #include "RRL/rhi/software/SIMDTypes.hpp"
 #include "RRL/rhi/software/SWRMath.hpp"
@@ -64,25 +64,6 @@ static inline uint8_t GetRGBOffset(rrl::data::ImageColorLayout layout, RGBAOffse
     }
     return 0; 
 }
-static inline size_t GetPixelOffset(int x, int y, int width, int channels) {
-    return (y * width + x) * channels;
-}
-static inline float& GetDepth(rrl::data::ImageData& depth_buffer, int x, int y) {
-    float* depth_data = reinterpret_cast<float*>(depth_buffer.data.data());
-    return depth_data[y * depth_buffer.width + x];
-}
-static inline void SetPixel(rrl::data::ImageData& render_target, int x, int y, uint8_t r, uint8_t g, uint8_t b, const ColorFormatCache& format) {
-    size_t offset = GetPixelOffset(x, y, render_target.width, format.channels);
-    
-    render_target.data[offset + format.r_off] = r;
-    render_target.data[offset + format.g_off] = g;
-    render_target.data[offset + format.b_off] = b;
-    
-    // Force the alpha channel to 255
-    if (format.channels == 4) {
-        render_target.data[offset + 3] = 255; 
-    }
-}
 static inline stbir_pixel_layout GetSTBPixelLayout(rrl::data::ImageColorLayout layout, int channels) {
     if (channels == 3) {
         return (layout == rrl::data::ImageColorLayout::BGR) ? STBIR_BGR : STBIR_RGB;
@@ -135,119 +116,6 @@ static inline glm::vec4 GetColor(const SWRMesh& mesh, uint32_t index) {
 
 
 
-// --- Rasterization Helpers ---------------------------------------
-static void RasterizeTriangle(
-    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
-    const glm::vec4& v0, const glm::vec4& v1, const glm::vec4& v2,  // NDC + ClipW for depth interp
-    const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2,  // Screen coords for edge equations
-    const SWRMesh& mesh, const SWRVertexBuffer& vertex_buffer, 
-    uint32_t i0, uint32_t i1, uint32_t i2,                          // Mesh indices for UV lookups
-    const glm::vec4& mat_base_color, const rrl::data::ImageData* active_albedo,
-    const ColorFormatCache& rt_format, const ColorFormatCache& tex_format,
-    bool disable_textures, bool show_uvs, bool runtime_affine_override 
-) {
-    // Bounding Box Generation
-    // Bounding Box Generation (Fixed unsigned/signed mismatches)
-    int width_m1  = static_cast<int>(render_target.width) - 1;
-    int height_m1 = static_cast<int>(render_target.height) - 1;
-
-    int min_x = std::clamp(static_cast<int>(std::min({p0.x, p1.x, p2.x})), 0, width_m1);
-    int max_x = std::clamp(static_cast<int>(std::max({p0.x, p1.x, p2.x})), 0, width_m1);
-    int min_y = std::clamp(static_cast<int>(std::min({p0.y, p1.y, p2.y})), 0, height_m1);
-    int max_y = std::clamp(static_cast<int>(std::max({p0.y, p1.y, p2.y})), 0, height_m1);
-
-    // Edge Equation Denominator (Triangle Area)
-    float denom = (p1.y - p2.y) * (p0.x - p2.x) + (p2.x - p1.x) * (p0.y - p2.y);
-    if (std::abs(denom) < 0.00001f) return;
-
-    // Resolve Interpolation Weights Branchlessly (Pulling from VertexBuffer!)
-    float inv_w0 = 1.0f, inv_w1 = 1.0f, inv_w2 = 1.0f;
-    #ifndef RRL_SWR_AFFINE_INTERPOLATION
-    if (!runtime_affine_override) {
-        inv_w0 = vertex_buffer.inv_w[i0];
-        inv_w1 = vertex_buffer.inv_w[i1];
-        inv_w2 = vertex_buffer.inv_w[i2];
-    }
-    #endif
-
-    // Get UVs and Colors
-    glm::vec2 uv0(0.0f), uv1(0.0f), uv2(0.0f);
-    bool use_textures = !disable_textures && active_albedo && !active_albedo->data.empty() && !mesh.uvs.empty();
-    if (use_textures || show_uvs) {
-        uv0 = GetUV(mesh, i0);
-        uv1 = GetUV(mesh, i1);
-        uv2 = GetUV(mesh, i2);
-    }
-    glm::vec4 c0(1.0f), c1(1.0f), c2(1.0f);
-    if (!mesh.colors.empty()) {
-        c0 = GetColor(mesh, i0);
-        c1 = GetColor(mesh, i1);
-        c2 = GetColor(mesh, i2);
-    }
-
-    // Pixel Fragment Loop
-    for (int y = min_y; y <= max_y; ++y) {
-        for (int x = min_x; x <= max_x; ++x) {
-            float px = static_cast<float>(x) + 0.5f; // Pixel center
-            float py = static_cast<float>(y) + 0.5f;
-
-            // Barycentric equations
-            float w0 = ((p1.y - p2.y) * (px - p2.x) + (p2.x - p1.x) * (py - p2.y)) / denom;
-            float w1 = ((p2.y - p0.y) * (px - p2.x) + (p0.x - p2.x) * (py - p2.y)) / denom;
-            float w2 = 1.0f - w0 - w1;
-            if (w0 < 0.0f || w1 < 0.0f || w2 < 0.0f) continue; // The pixel is outside the triangle
-            
-            // Linear Depth Interpolation for Z-Buffer test
-            float interpolated_z = w0 * v0.z + w1 * v1.z + w2 * v2.z;
-            if (interpolated_z >= GetDepth(depth_buffer, x, y)) continue; // The pixel is ocluded by other object
-            GetDepth(depth_buffer, x, y) = interpolated_z; // Write on the depth buffer
-
-
-            // Fragment shading logic
-            float perspective_w = 1.0f / (w0 * inv_w0 + w1 * inv_w1 + w2 * inv_w2);
-            glm::vec4 interp_c = perspective_w * (w0 * c0 * inv_w0 + w1 * c1 * inv_w1 + w2 * c2 * inv_w2);
-            glm::vec4 final_color = mat_base_color * interp_c;
-
-            if (show_uvs && !disable_textures && !use_textures) {
-                final_color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
-            }
-
-            // Texture Sampling
-            if (use_textures) {
-                float interp_u = perspective_w * (w0 * uv0.x * inv_w0 + w1 * uv1.x * inv_w1 + w2 * uv2.x * inv_w2);
-                float interp_v = perspective_w * (w0 * uv0.y * inv_w0 + w1 * uv1.y * inv_w1 + w2 * uv2.y * inv_w2);
-                // interp_v = 1.0f - interp_v; // Flip V
-
-                // Texture Wrapping
-                interp_u = interp_u - std::floor(interp_u);
-                interp_v = interp_v - std::floor(interp_v);
-
-                int tex_w_m1 = static_cast<int>(active_albedo->width) - 1;
-                int tex_h_m1 = static_cast<int>(active_albedo->height) - 1;
-                int tx = std::clamp(static_cast<int>(interp_u * active_albedo->width), 0, tex_w_m1);
-                int ty = std::clamp(static_cast<int>(interp_v * active_albedo->height), 0, tex_h_m1);
-
-                size_t texel_offset = GetPixelOffset(tx, ty, active_albedo->width, tex_format.channels);
-                
-                uint8_t tr = active_albedo->data[texel_offset + tex_format.r_off];
-                uint8_t tg = active_albedo->data[texel_offset + tex_format.g_off];
-                uint8_t tb = active_albedo->data[texel_offset + tex_format.b_off];
-
-                final_color.r *= (tr / 255.0f);
-                final_color.g *= (tg / 255.0f);
-                final_color.b *= (tb / 255.0f);
-            }
-
-            // Output to Framebuffer
-            uint8_t out_r = static_cast<uint8_t>(std::clamp(final_color.r * 255.0f, 0.0f, 255.0f));
-            uint8_t out_g = static_cast<uint8_t>(std::clamp(final_color.g * 255.0f, 0.0f, 255.0f));
-            uint8_t out_b = static_cast<uint8_t>(std::clamp(final_color.b * 255.0f, 0.0f, 255.0f));
-
-            SetPixel(render_target, x, y, out_r, out_g, out_b, rt_format);
-
-        }
-    }
-}
 
 
 // --- API ---------------------------------------------------------
@@ -542,6 +410,118 @@ void SWRVertexShader(const SWRMesh& mesh, const glm::mat4& mvp, SWRVertexBuffer&
         }
     }
 }
+void RasterizeTriangle(
+    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    const glm::vec4& v0, const glm::vec4& v1, const glm::vec4& v2,  // NDC + ClipW for depth interp
+    const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2,  // Screen coords for edge equations
+    const SWRMesh& mesh, const SWRVertexBuffer& vertex_buffer, 
+    uint32_t i0, uint32_t i1, uint32_t i2,                          // Mesh indices for UV lookups
+    const glm::vec4& mat_base_color, const rrl::data::ImageData* active_albedo,
+    const ColorFormatCache& rt_format, const ColorFormatCache& tex_format,
+    bool disable_textures, bool show_uvs, bool runtime_affine_override 
+) {
+    // Bounding Box Generation
+    // Bounding Box Generation (Fixed unsigned/signed mismatches)
+    int width_m1  = static_cast<int>(render_target.width) - 1;
+    int height_m1 = static_cast<int>(render_target.height) - 1;
+
+    int min_x = std::clamp(static_cast<int>(std::min({p0.x, p1.x, p2.x})), 0, width_m1);
+    int max_x = std::clamp(static_cast<int>(std::max({p0.x, p1.x, p2.x})), 0, width_m1);
+    int min_y = std::clamp(static_cast<int>(std::min({p0.y, p1.y, p2.y})), 0, height_m1);
+    int max_y = std::clamp(static_cast<int>(std::max({p0.y, p1.y, p2.y})), 0, height_m1);
+
+    // Edge Equation Denominator (Triangle Area)
+    float denom = (p1.y - p2.y) * (p0.x - p2.x) + (p2.x - p1.x) * (p0.y - p2.y);
+    if (std::abs(denom) < 0.00001f) return;
+
+    // Resolve Interpolation Weights Branchlessly (Pulling from VertexBuffer!)
+    float inv_w0 = 1.0f, inv_w1 = 1.0f, inv_w2 = 1.0f;
+    #ifndef RRL_SWR_AFFINE_INTERPOLATION
+    if (!runtime_affine_override) {
+        inv_w0 = vertex_buffer.inv_w[i0];
+        inv_w1 = vertex_buffer.inv_w[i1];
+        inv_w2 = vertex_buffer.inv_w[i2];
+    }
+    #endif
+
+    // Get UVs and Colors
+    glm::vec2 uv0(0.0f), uv1(0.0f), uv2(0.0f);
+    bool use_textures = !disable_textures && active_albedo && !active_albedo->data.empty() && !mesh.uvs.empty();
+    if (use_textures || show_uvs) {
+        uv0 = GetUV(mesh, i0);
+        uv1 = GetUV(mesh, i1);
+        uv2 = GetUV(mesh, i2);
+    }
+    glm::vec4 c0(1.0f), c1(1.0f), c2(1.0f);
+    if (!mesh.colors.empty()) {
+        c0 = GetColor(mesh, i0);
+        c1 = GetColor(mesh, i1);
+        c2 = GetColor(mesh, i2);
+    }
+
+    // Pixel Fragment Loop
+    for (int y = min_y; y <= max_y; ++y) {
+        for (int x = min_x; x <= max_x; ++x) {
+            float px = static_cast<float>(x) + 0.5f; // Pixel center
+            float py = static_cast<float>(y) + 0.5f;
+
+            // Barycentric equations
+            float w0 = ((p1.y - p2.y) * (px - p2.x) + (p2.x - p1.x) * (py - p2.y)) / denom;
+            float w1 = ((p2.y - p0.y) * (px - p2.x) + (p0.x - p2.x) * (py - p2.y)) / denom;
+            float w2 = 1.0f - w0 - w1;
+            if (w0 < 0.0f || w1 < 0.0f || w2 < 0.0f) continue; // The pixel is outside the triangle
+            
+            // Linear Depth Interpolation for Z-Buffer test
+            float interpolated_z = w0 * v0.z + w1 * v1.z + w2 * v2.z;
+            if (interpolated_z >= GetDepth(depth_buffer, x, y)) continue; // The pixel is ocluded by other object
+            GetDepth(depth_buffer, x, y) = interpolated_z; // Write on the depth buffer
+
+
+            // Fragment shading logic
+            float perspective_w = 1.0f / (w0 * inv_w0 + w1 * inv_w1 + w2 * inv_w2);
+            glm::vec4 interp_c = perspective_w * (w0 * c0 * inv_w0 + w1 * c1 * inv_w1 + w2 * c2 * inv_w2);
+            glm::vec4 final_color = mat_base_color * interp_c;
+
+            if (show_uvs && !disable_textures && !use_textures) {
+                final_color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+            }
+
+            // Texture Sampling
+            if (use_textures) {
+                float interp_u = perspective_w * (w0 * uv0.x * inv_w0 + w1 * uv1.x * inv_w1 + w2 * uv2.x * inv_w2);
+                float interp_v = perspective_w * (w0 * uv0.y * inv_w0 + w1 * uv1.y * inv_w1 + w2 * uv2.y * inv_w2);
+                // interp_v = 1.0f - interp_v; // Flip V
+
+                // Texture Wrapping
+                interp_u = interp_u - std::floor(interp_u);
+                interp_v = interp_v - std::floor(interp_v);
+
+                int tex_w_m1 = static_cast<int>(active_albedo->width) - 1;
+                int tex_h_m1 = static_cast<int>(active_albedo->height) - 1;
+                int tx = std::clamp(static_cast<int>(interp_u * active_albedo->width), 0, tex_w_m1);
+                int ty = std::clamp(static_cast<int>(interp_v * active_albedo->height), 0, tex_h_m1);
+
+                size_t texel_offset = GetPixelOffset(tx, ty, active_albedo->width, tex_format.channels);
+                
+                uint8_t tr = active_albedo->data[texel_offset + tex_format.r_off];
+                uint8_t tg = active_albedo->data[texel_offset + tex_format.g_off];
+                uint8_t tb = active_albedo->data[texel_offset + tex_format.b_off];
+
+                final_color.r *= (tr / 255.0f);
+                final_color.g *= (tg / 255.0f);
+                final_color.b *= (tb / 255.0f);
+            }
+
+            // Output to Framebuffer
+            uint8_t out_r = static_cast<uint8_t>(std::clamp(final_color.r * 255.0f, 0.0f, 255.0f));
+            uint8_t out_g = static_cast<uint8_t>(std::clamp(final_color.g * 255.0f, 0.0f, 255.0f));
+            uint8_t out_b = static_cast<uint8_t>(std::clamp(final_color.b * 255.0f, 0.0f, 255.0f));
+
+            SetPixel(render_target, x, y, out_r, out_g, out_b, rt_format);
+
+        }
+    }
+}
 void SWRRender3DMesh(
     rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
     const SWRMesh& mesh, const SWRVertexBuffer& vertex_buffer,
@@ -606,10 +586,33 @@ void SWRRender3DMesh(
 
             } 
             else {
+
+                // Get UVs and Colors
+                glm::vec2 uv0(0.0f), uv1(0.0f), uv2(0.0f);
+                if (!mesh.uvs.empty()) {
+                    uv0 = GetUV(mesh, i0); uv1 = GetUV(mesh, i1); uv2 = GetUV(mesh, i2);
+                }
+                glm::vec4 c0(1.0f), c1(1.0f), c2(1.0f);
+                if (!mesh.colors.empty()) {
+                    c0 = GetColor(mesh, i0); c1 = GetColor(mesh, i1); c2 = GetColor(mesh, i2);
+                }
+                
+                // Resolve Interpolation Weights 
+                float iw0 = 1.0f, iw1 = 1.0f, iw2 = 1.0f;
+                #ifndef RRL_SWR_AFFINE_INTERPOLATION
+                if (!runtime_affine_override) {
+                    iw0 = vertex_buffer.inv_w[i0];
+                    iw1 = vertex_buffer.inv_w[i1];
+                    iw2 = vertex_buffer.inv_w[i2];
+                }
+                #endif
+
+                // Dispatch to the Rasterizer
                 RasterizeTriangle(
                     render_target, depth_buffer,
                     v0, v1, v2, p0, p1, p2,
-                    mesh, vertex_buffer, i0, i1, i2,
+                    uv0, uv1, uv2, c0, c1, c2,
+                    iw0, iw1, iw2,
                     mat_base_color, active_albedo, 
                     rt_format, tex_format,
                     disable_textures, show_uvs, runtime_affine_override
