@@ -1,0 +1,55 @@
+{
+  "context": {
+    "date": "2026-07-02T09:26:02+02:00",
+    "host_name": "CPU00524U.vicomtech.es",
+    "executable": "./build/benchmarks/simd/bin/bm_swr_opencv_rungholt",
+    "num_cpus": 12,
+    "mhz_per_cpu": 4500,
+    "cpu_scaling_enabled": true,
+    "caches": [
+      {
+        "type": "Data",
+        "level": 1,
+        "size": 32768,
+        "num_sharing": 2
+      },
+      {
+        "type": "Instruction",
+        "level": 1,
+        "size": 32768,
+        "num_sharing": 2
+      },
+      {
+        "type": "Unified",
+        "level": 2,
+        "size": 262144,
+        "num_sharing": 2
+      },
+      {
+        "type": "Unified",
+        "level": 3,
+        "size": 12582912,
+        "num_sharing": 12
+      }
+    ],
+    "load_avg": [5.49707,2.9165,2.25098],
+    "library_build_type": "release"
+  },
+  "benchmarks": [
+    {
+      "name": "RungholtRenderFixture/BM_RenderFrames/iterations:1000",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "RungholtRenderFixture/BM_RenderFrames/iterations:1000",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 1000,
+      "real_time": 3.4239612769598898e+02,
+      "cpu_time": 3.4224555402599941e+02,
+      "time_unit": "ms",
+      "FPS": 2.9218787161338344e+00
+    }
+  ]
+}

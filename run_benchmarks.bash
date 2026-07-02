@@ -29,10 +29,12 @@ run_benchmark_config() {
         echo "Error: Source file for '${BASE_NAME}' not found in ${BENCHMARKS_DIR}/"
         exit 1
     fi
+
+    local CPU_MODEL=$(grep -m 1 'model name' /proc/cpuinfo | awk -F: '{print $2}' | sed -e 's/^[ \t]*//' -e 's/ /_/g' -e 's/(R)//g' -e 's/(TM)//g')
     
     local TARGET_NAME="bm_${BASE_NAME}"
     local BUILD_DIR="${BENCHMARKS_BUILD_DIR}/${CONFIG_NAME}"
-    local OUT_JSON="${REPORTS_DIR}/${CONFIG_NAME}_results.json"
+    local OUT_JSON="${REPORTS_DIR}/${CPU_MODEL}_${CONFIG_NAME}_results.json"
 
     echo ""
     echo "Building Benchmark Configuration ${CONFIG_NAME^^}"
