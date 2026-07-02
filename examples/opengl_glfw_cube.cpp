@@ -1,4 +1,4 @@
-// examples/swr_opencv_cube.cpp
+// examples/opengl_glfw_cube.cpp
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
@@ -58,9 +58,9 @@ int main() {
     entt::registry registry;
     rrl::tf::RegisterTFActions(registry);
     rrl::data::InitializeAssetManager(registry);
-    rrl::rhi::RHIWindow main_window = rrl::rhi::CreateWindow(rrl::rhi::RHIWindowType::OPENCV);
+    rrl::rhi::RHIWindow main_window = rrl::rhi::CreateWindow(rrl::rhi::RHIWindowType::GLFW);
     rrl::rhi::InitializeWindow(main_window, "RRL - 3D Mesh + 2D UI", window_w, window_h);
-    if (!rrl::rhi::LoadBackend(rrl::rhi::RHIBackendType::SOFTWARE, registry)) {
+    if (!rrl::rhi::LoadBackend(rrl::rhi::RHIBackendType::OPENGL, registry)) {
         LOG_ERROR("[RRL Engine] Failed to load RHI backend!");
         return -1;
     }
@@ -68,7 +68,6 @@ int main() {
         LOG_ERROR("[RRL Engine] Failed to initialize RHI backend!");
         return -1;
     }
-
 
 
     // 3D Cube Creation
@@ -100,7 +99,9 @@ int main() {
     // Main loop
     LOG_INFO("[RRL Engine] Entering main loop...");
     float rotation_z = 0.0f;
-    while (true) {
+    
+    // PollWindowEvents returns false when the GLFW window 'X' is clicked
+    while (rrl::rhi::PollWindowEvents(main_window)) {
 
         // 3D Cube Rotation Update
         rotation_z += 0.02f;
@@ -120,11 +121,12 @@ int main() {
 
         // Tick Engine Logic
         rrl::tf::UpdateTransformTree(registry);
-        rrl::camera::UpdateCameras(registry, rrl::camera::NDC_OPENCV);
+        rrl::camera::UpdateCameras(registry, rrl::camera::NDC_OPENGL);
         rrl::rhi::SyncResources(registry);
+        
         rrl::rhi::RenderFrame(registry);
+        
         rrl::rhi::Present(registry); 
-        rrl::rhi::PollWindowEvents(main_window); 
         
 
         // ~60 FPS main loop
@@ -140,3 +142,4 @@ int main() {
     flogging::ResetLogger();
     return 0;
 }
+

@@ -15,8 +15,9 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
-        "RRL_BUILD_WINDOW_OPENCV": "ON",
-        "RRL_BUILD_SWR_SIMD_BACKEND": "ON"
+        "RRL_BUILD_SWR_SIMD_BACKEND": "ON",
+        "RRL_BUILD_BACKEND_OPENGL": "ON",
+        "RRL_BUILD_WINDOW_OPENCV": "ON"
       }
     },
     {

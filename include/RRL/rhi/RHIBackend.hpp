@@ -71,10 +71,6 @@ struct RHIWindow {
     uint32_t width { 800 };
     uint32_t height { 600 };
     void* native_handle { nullptr }; // GLFWwindow* or const char* for OpenCV window name
-
-    // bool (*Initialize)(RHIWindow* self, const char* title, uint32_t w, uint32_t h) { nullptr };
-    // bool (*PollEvents)(RHIWindow* self) { nullptr }; // Returns false if closed
-    // void (*Shutdown)(RHIWindow* self) { nullptr };
 };
 
 

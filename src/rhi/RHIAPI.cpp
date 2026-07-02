@@ -8,12 +8,14 @@
 
 #include <FLogging/FLogging.hpp>
 #include "RRL/DebugMacros.hpp"
-#include "entt/entity/entity.hpp"
 
 
 // --- Backend Factories -------------------------------------------
 // Forward declare the compile-time available Backend factories
 namespace rrl::rhi::software { RHIBackend CreateSoftwareBackend(); }
+#ifdef RRL_BUILD_BACKEND_OPENGL
+namespace rrl::rhi::opengl   { RHIBackend CreateOpenGLBackend(); }
+#endif
 
 
 // --- Window Factories --------------------------------------------
@@ -25,7 +27,7 @@ namespace rrl::rhi::window::opencv {
     void Shutdown(RHIWindow& window);
 }
 #endif
-#ifdef RRL_BUILD_WINDOW_GLFW
+#ifdef RRL_BUILD_WINDOW_GLFW 
 namespace rrl::rhi::window::glfw {
     bool Initialize(RHIWindow& window, const char* title, uint32_t w, uint32_t h);
     bool PollEvents(RHIWindow& window);
@@ -65,7 +67,7 @@ bool InitializeWindow(RHIWindow& window, const char* title, uint32_t w, uint32_t
             #ifdef RRL_BUILD_WINDOW_GLFW
             return window::glfw::Initialize(window, title, w, h);
             #else
-            LOG_ERROR("InitializeWindow: GLFW support not compiled in this build.");
+            LOG_ERROR("InitializeWindow: GLFW + OpenGL support not compiled in this build.");
             return false;
             #endif
     }
@@ -140,9 +142,16 @@ bool LoadBackend(RHIBackendType target_backend, entt::registry& registry) {
             RHIBackendManager::Instance().SetBackend(rrl::rhi::software::CreateSoftwareBackend());
             return true;
             
-        case RHIBackendType::OPENGL:
-            // RHIBackendManager::Instance().SetBackend(rrl::rhi::opengl::CreateOpenGLBackend());
-            // return true;
+        case RHIBackendType::OPENGL: {
+            #ifdef RRL_BUILD_BACKEND_OPENGL
+            RHIBackendManager::Instance().SetBackend(rrl::rhi::opengl::CreateOpenGLBackend());
+            return true;
+            #else
+            LOG_ERROR("Loadbackend: OpenGL support not compiled in this build.");
+            return false;
+            #endif
+            
+        }
             
         default:
             LOG_ERROR("LoadBackend failed. Unknown or unavailable requested RHI backend.");

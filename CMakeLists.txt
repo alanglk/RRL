@@ -12,7 +12,7 @@ project(RRL
     VERSION 1.0.0 
     DESCRIPTION "Robotics Rendering Library (RRL)"
     HOMEPAGE_URL "https://github.com/alanglk/RRL"
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -46,8 +46,10 @@ option(RRL_BUILD_BACKEND_OPENGL     "Build the hardware-accelerated OpenGL backe
 option(RRL_BUILD_BACKEND_WEBGPU     "Build the WebGPU backend for WASM targets" OFF)
 
 # RHI Presentation (Windowing) Layers
-option(RRL_BUILD_WINDOW_OPENCV      "Build the OpenCV Window presentation layer" ON)
-# option(RRL_BUILD_WINDOW_GLFW      "Build the GLFW Window presentation layer" OFF)
+option(RRL_BUILD_WINDOW_OPENCV      "Build the OpenCV Window presentation layer" OFF)
+# Building OpenGL automatically enables GLFW windowing. 
+# Building GLFW windowing without OpenGL backend is not supported.
+# option(RRL_BUILD_WINDOW_GLFW      "Build the GLFW Window presentation layer" OFF) 
 
 
 
@@ -82,8 +84,10 @@ set(CMAKE_MACOSX_RPATH FALSE)
 
 # --- Library Setup Variables -------------------------------------
 set(RRL_TYPE STATIC)                # STATIC or SHARED
+set(RRL_SOURCES )                   # RRL sources
 set(RRL_PUBLIC_LIBRARIES )          # Public RRL dependencies (entt, glm)
-set(RRL_PRIVATE_LIBRARIES )         # Private RRL dependencies (no deps for now)
+set(RRL_PRIVATE_LIBRARIES )         # Private RRL dependencies (glfw, ...)
+set(RRL_PRIVATE_INCLUDE_DIRS )      # Private RRL include directories (tinyobjloader, stb header libs, glad...)
 set(RRL_PUBLIC_COMPILE_DEFS )       # e.g. ENABLE_CUDA to compile CUDA RHI and tell lib linkers it is enabled
 set(RRL_PRIVATE_COMPILE_DEFS )      # e.g. ENABLE_TESTING compile definition to compile tests source sections
 
@@ -114,6 +118,13 @@ set(RRL_SOURCES
     src/debug/SceneManagerDebugger.cpp
     src/debug/RHIDebugger.cpp
 
+)
+
+# --- Library Private Base Includes -------------------------------
+set(RRL_PRIVATE_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/include                 # Private RRL headers
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb             # STB header libs
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tinyobjloader   # OBJ file loader header lib
 )
 
 
@@ -228,17 +239,49 @@ endif()
 
 ## Desktop OpenGL Rendering
 if(RRL_DESKTOP_TARGET AND RRL_BUILD_BACKEND_OPENGL)
-    message(STATUS "RRL [Hardware RHI]: OpenGL backend enabled.")
-    list(APPEND RRL_PUBLIC_COMPILE_DEFS RRL_BUILD_BACKEND_OPENGL)
-    # find_package(OpenGL REQUIRED)
-    # list(APPEND RRL_PRIVATE_LIBRARIES OpenGL::GL)
-    # list(APPEND RRL_SOURCES src/rhi/opengl/OpenGLRenderer.cpp)
-    # if(OpenGL_FOUND)
-    # else()
-    #     message(WARNING "RRL [OpenGL RHI]: OpenGL not found! Disabling OpenGL backend.")
-    #     set(RRL_BUILD_BACKEND_OPENGL OFF CACHE BOOL "Build the OpenCV Rasterizer RHI Backend" FORCE)
-    # endif()
+    message(STATUS "RRL [Hardware RHI]: OpenGL backend enabled (GLFW + GLAD 4.5 Core).")
+    
+    # OpenGL requires GLFW for generating its context
+    set(RRL_BUILD_WINDOW_GLFW ON CACHE BOOL "Build the GLFW Window presentation layer" FORCE)
+    
+    # Include and Configure GLFW
+    set(GLFW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glfw")
+    if(EXISTS "${GLFW_DIR}/CMakeLists.txt")
+        # Disable GLFW clutter
+        set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+        set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+        
+        add_subdirectory(${GLFW_DIR} "${CMAKE_CURRENT_BINARY_DIR}/glfw" EXCLUDE_FROM_ALL)
+        list(APPEND RRL_PRIVATE_LIBRARIES $<BUILD_INTERFACE:glfw>)
+    else()
+        message(FATAL_ERROR "GLFW source missing. Run 'git submodule update --init --recursive'")
+        set(RRL_BUILD_WINDOW_GLFW OFF CACHE BOOL "Build the GLFW Window presentation layer" FORCE)
+    endif()
+
+    # Include GLAD
+    set(GLAD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glad")
+    if(EXISTS "${GLAD_DIR}/src/glad.c")
+        list(APPEND RRL_SOURCES ${GLAD_DIR}/src/glad.c)
+        list(APPEND RRL_PRIVATE_INCLUDE_DIRS ${GLAD_DIR}/include)
+    else()
+        message(FATAL_ERROR "GLAD source missing. Generate from glad.dav1d.de and place in third_party/glad/")
+        set(RRL_BUILD_BACKEND_OPENGL OFF CACHE BOOL "Build the hardware-accelerated OpenGL backend" FORCE)
+    endif()
+
 endif()
+if (RRL_BUILD_WINDOW_GLFW AND RRL_BUILD_BACKEND_OPENGL)
+    list(APPEND RRL_SOURCES 
+        src/rhi/opengl/OpenGLRenderer.cpp
+        src/rhi/window/GLFWWindow.cpp
+    )
+    list(APPEND RRL_PUBLIC_COMPILE_DEFS 
+        RRL_BUILD_BACKEND_OPENGL
+        RRL_BUILD_WINDOW_GLFW
+    )
+endif()
+
 
 ## WASM WebGPU Rendering
 if(RRL_WASM_TARGET AND RRL_BUILD_BACKEND_WEBGPU)
@@ -277,9 +320,7 @@ target_include_directories(rrl
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:include>
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb
-        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tinyobjloader
+        ${RRL_PRIVATE_INCLUDE_DIRS}
 )
 target_compile_definitions(rrl 
     PUBLIC  ${RRL_PUBLIC_COMPILE_DEFS}
