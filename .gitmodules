@@ -7,3 +7,6 @@
 [submodule "third_party/FLogging"]
 	path = third_party/FLogging
 	url = https://github.com/alanglk/FLogging.git
+[submodule "third_party/glfw"]
+	path = third_party/glfw
+	url = https://github.com/glfw/glfw.git
