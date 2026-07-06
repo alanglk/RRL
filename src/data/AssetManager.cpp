@@ -53,8 +53,8 @@ static void OnMeshLinkageDestroyed(entt::registry& registry, entt::entity entity
     auto& linkage = registry.get<MeshLinkage>(entity);
     DecrementAssetRef(registry, linkage.mesh_asset);
 }
-static void OnMaterialDataDestroyed(entt::registry& registry, entt::entity entity) {
-    auto& mat = registry.get<MaterialData>(entity);
+static void OnMaterialSourceDestroyed(entt::registry& registry, entt::entity entity) {
+    auto& mat = registry.get<MaterialSourceComponent>(entity).data;
     // Cascade dereference counting down to the textures
     DecrementAssetRef(registry, mat.albedo_map);
     DecrementAssetRef(registry, mat.normal_map);
@@ -85,7 +85,7 @@ void InitializeAssetManager(entt::registry& registry) {
     // Asset Garbage Collection
     registry.on_destroy<TextureLinkage>().connect<&OnTextureLinkageDestroyed>();
     registry.on_destroy<MeshLinkage>().connect<&OnMeshLinkageDestroyed>();
-    registry.on_destroy<MaterialData>().connect<&OnMaterialDataDestroyed>();
+    registry.on_destroy<MeshSourceComponent>().connect<&OnMeshSourceDestroyed>();
     registry.on_destroy<MeshSourceComponent>().connect<&OnMeshSourceDestroyed>();
 }
 void SetAssetGCPolicy(entt::registry& registry, AssetGCPolicy policy) {
@@ -166,7 +166,7 @@ void DestroyAllAssets(entt::registry& registry) {
     auto meshes = registry.view<MeshSourceComponent>();
     registry.destroy(meshes.begin(), meshes.end());
 
-    auto materials = registry.view<MaterialData>();
+    auto materials = registry.view<MaterialSourceComponent>();
     registry.destroy(materials.begin(), materials.end());
 }
 
@@ -352,7 +352,10 @@ entt::entity CreateMaterial(entt::registry& registry, const MaterialID& material
         clean_data.emissive_map = entt::null;
 
         entt::entity mat_entity = registry.create();
-        registry.emplace<MaterialData>(mat_entity, clean_data);
+        auto& source = registry.emplace<MaterialSourceComponent>(mat_entity);
+        source.data = clean_data;
+        source.version = 1;
+        
         cache.materials[material_id] = mat_entity;
 
         // Securely bind textures
@@ -367,19 +370,21 @@ entt::entity CreateMaterial(entt::registry& registry, const MaterialID& material
 }
 void UpdateMaterial(entt::registry& registry, entt::entity material_asset, const MaterialData& mat_data) {
     RRL_ASSERT(registry.valid(material_asset), "UpdateMaterial: Invalid material asset!");
-    RRL_ASSERT(registry.all_of<MaterialData>(material_asset), "UpdateMaterial: Lacks MaterialData!");
-
-    auto& old_mat = registry.get<MaterialData>(material_asset);
-    MaterialData next_mat = mat_data;
+    RRL_ASSERT(registry.all_of<MaterialSourceComponent>(material_asset), "UpdateMaterial: Lacks MaterialSourceComponent!");
 
     // Preserve the old textures inside the patch to let the Bind API handle the swapping cleanly
+    auto& source = registry.get<MaterialSourceComponent>(material_asset);
+    auto& old_mat = source.data;
+    MaterialData next_mat = mat_data;
+
     next_mat.albedo_map = old_mat.albedo_map;
     next_mat.normal_map = old_mat.normal_map;
     next_mat.metallic_roughness_map = old_mat.metallic_roughness_map;
     next_mat.emissive_map = old_mat.emissive_map;
-    
     old_mat = next_mat;
-    registry.patch<MaterialData>(material_asset);
+
+    // Update the version so the RHI knows a material was updated
+    source.version.fetch_add(1, std::memory_order_release);
 
     // Securely swap bindings
     if (old_mat.albedo_map != mat_data.albedo_map) BindMaterialTexture(registry, material_asset, mat_data.albedo_map, MaterialTextureType::ALBEDO);
@@ -392,7 +397,7 @@ void BindMaterial(entt::registry& registry, entt::entity mesh_asset, entt::entit
     RRL_ASSERT(registry.valid(mesh_asset), "BindMaterial: Invalid mesh asset!");
     RRL_ASSERT(registry.all_of<MeshSourceComponent>(mesh_asset), "BindMaterial: Lacks MeshSourceComponent!");
     RRL_ASSERT(registry.valid(material_asset), "BindMaterial: Invalid material asset!");
-    RRL_ASSERT(registry.all_of<MaterialData>(material_asset), "BindMaterial: Lacks MaterialData!");
+    RRL_ASSERT(registry.all_of<MaterialSourceComponent>(material_asset), "BindMaterial: Lacks MaterialSourceComponent!");
 
     auto& source = registry.get<MeshSourceComponent>(mesh_asset);
     if (!source.mesh) return;
@@ -417,6 +422,7 @@ void BindMaterial(entt::registry& registry, entt::entity mesh_asset, entt::entit
         source.mesh->materials.push_back({index_offset, count, material_asset});
     }
 
+    // Update the version so the RHI knows a texture was swapped!
     source.version.fetch_add(1, std::memory_order_release);
 }
 
@@ -428,8 +434,9 @@ void BindMaterialTexture(entt::registry& registry, entt::entity material_asset, 
         RRL_ASSERT(registry.all_of<TextureSourceComponent>(texture_asset), "BindMaterialTexture: Lacks TextureSourceComponent!");
     }
 
-    if (registry.all_of<MaterialData>(material_asset)) {
-        auto& mat = registry.get<MaterialData>(material_asset);
+    if (registry.all_of<MaterialSourceComponent>(material_asset)) {
+        auto& source = registry.get<MaterialSourceComponent>(material_asset);
+        auto& mat = source.data;
         entt::entity* target_slot = nullptr;
         
         switch (texture_type) {
@@ -440,11 +447,12 @@ void BindMaterialTexture(entt::registry& registry, entt::entity material_asset, 
         }
 
         if (target_slot && *target_slot != texture_asset) {
-            // Safely swap the texture references
             DecrementAssetRef(registry, *target_slot);
             IncrementAssetRef(registry, texture_asset);
             *target_slot = texture_asset;
-            registry.patch<MaterialData>(material_asset);
+            
+            // Update the version so the RHI knows a texture was swapped!
+            source.version.fetch_add(1, std::memory_order_release);
         }
     }
 }

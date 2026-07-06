@@ -563,10 +563,10 @@ void SWRRender3DMesh(
             const glm::vec4& v2 = vertex_buffer.ndc_positions[i2];
             if (v0.w <= 0.001f || v1.w <= 0.001f || v2.w <= 0.001f) continue;
 
-            // Viewport Transform (NDC -> Screen Space)
-            glm::vec2 p0((v0.x + 1.0f) * half_w, (1.0f - v0.y) * half_h);
-            glm::vec2 p1((v1.x + 1.0f) * half_w, (1.0f - v1.y) * half_h);
-            glm::vec2 p2((v2.x + 1.0f) * half_w, (1.0f - v2.y) * half_h);
+            // Viewport Transform (NDC -> Screen Space) (OpenCV Convention)
+            glm::vec2 p0((v0.x + 1.0f) * half_w, (v0.y + 1.0f) * half_h); 
+            glm::vec2 p1((v1.x + 1.0f) * half_w, (v1.y + 1.0f) * half_h); 
+            glm::vec2 p2((v2.x + 1.0f) * half_w, (v2.y + 1.0f) * half_h); 
 
             // Backface Culling (do not apply if draw_wireframes)
             if (!draw_wireframes) {
@@ -630,8 +630,9 @@ void SWRRender3DMesh(
             
             if (v0.w <= 0.001f || v1.w <= 0.001f) continue;
 
-            glm::vec3 p0((v0.x + 1.0f) * half_w, (1.0f - v0.y) * half_h, v0.z);
-            glm::vec3 p1((v1.x + 1.0f) * half_w, (1.0f - v1.y) * half_h, v1.z);
+            // Viewport Transform (NDC -> Screen Space) (OpenCV Convention)
+            glm::vec3 p0((v0.x + 1.0f) * half_w, (v0.y + 1.0f) * half_h, v0.z);
+            glm::vec3 p1((v1.x + 1.0f) * half_w, (v1.y + 1.0f) * half_h, v1.z);
 
             glm::vec4 c0 = GetColor(mesh, i0);
             glm::vec3 mat_color = glm::vec3(mat_base_color * c0); 

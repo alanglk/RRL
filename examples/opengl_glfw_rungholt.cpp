@@ -1,4 +1,4 @@
-// examples/swr_opencv_rungholt.cpp
+// examples/opengl_glfw_rungholt.cpp
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
@@ -33,9 +33,9 @@ int main() {
     rrl::data::InitializeAssetManager(registry);
     rrl::tf::RegisterTFActions(registry);
     rrl::scene::InitializeSceneManager(registry);
-    rrl::rhi::RHIWindow main_window = rrl::rhi::CreateWindow(rrl::rhi::RHIWindowType::OPENCV);
+    rrl::rhi::RHIWindow main_window = rrl::rhi::CreateWindow(rrl::rhi::RHIWindowType::GLFW);
     rrl::rhi::InitializeWindow(main_window, "RRL - Rungholt Instancing Viewer", window_w, window_h);
-    if (!rrl::rhi::LoadBackend(rrl::rhi::RHIBackendType::SOFTWARE, registry)) {
+    if (!rrl::rhi::LoadBackend(rrl::rhi::RHIBackendType::OPENGL, registry)) {
         LOG_ERROR("[RRL Engine] Failed to load RHI backend!");
         return -1;
     }
@@ -78,7 +78,7 @@ int main() {
 
         // Tick Engine Logic
         rrl::tf::UpdateTransformTree(registry);
-        rrl::camera::UpdateCameras(registry, rrl::camera::NDC_OPENCV); 
+        rrl::camera::UpdateCameras(registry, rrl::camera::NDC_OPENGL); 
 
         rrl::rhi::SyncResources(registry);
         rrl::rhi::RenderFrame(registry);

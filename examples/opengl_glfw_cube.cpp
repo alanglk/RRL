@@ -11,6 +11,7 @@
 #include <FLogging/FLogging.hpp>
 
 // RRL Engine Modules
+#include "RRL/camera/CameraConventions.hpp"
 #include "RRL/data/AssetManager.hpp"
 #include "RRL/data/ImageData.hpp"
 #include "RRL/tf/TransformTree.hpp"
@@ -31,13 +32,14 @@ rrl::data::MeshData CreateWireframeCube(float size, entt::entity material) {
         {-h, -h, -h}, { h, -h, -h}, { h,  h, -h}, {-h,  h, -h}, // Bottom 4 corners
         {-h, -h,  h}, { h, -h,  h}, { h,  h,  h}, {-h,  h,  h}  // Top 4 corners
     };
+    
     mesh.indices = {
-        0, 1, 2,  0, 2, 3, // Bottom face
-        4, 5, 6,  4, 6, 7, // Top face
-        0, 1, 5,  0, 5, 4, // Front face
-        1, 2, 6,  1, 6, 5, // Right face
-        2, 3, 7,  2, 7, 6, // Back face
-        3, 0, 4,  3, 4, 7  // Left face
+        0, 2, 1,  0, 3, 2, // Bottom face
+        4, 5, 6,  4, 6, 7, // Top face 
+        0, 1, 5,  0, 5, 4, // Front face 
+        1, 2, 6,  1, 6, 5, // Right face 
+        2, 3, 7,  2, 7, 6, // Back face 
+        3, 0, 4,  3, 4, 7  // Left face 
     };
 
     mesh.materials.push_back({0, static_cast<uint32_t>(mesh.indices.size()), material});

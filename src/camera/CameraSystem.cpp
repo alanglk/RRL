@@ -86,7 +86,8 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
                         proj = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f)) * proj;
                         proj = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 1.0f)) * proj;
                     }
-                    if (ndc_target.y_direction == NDCYDirection::UP) { proj[1][1] *= -1.0f; }
+                    // GLM's RH_NO natively maps Y UP. We only flip if the target wants Y DOWN.
+                    if (ndc_target.y_direction == NDCYDirection::DOWN) { proj[1][1] *= -1.0f; }
                 } 
                 else if constexpr (std::is_same_v<T, OrthographicModel>) {
                     float half_w = model.width * 0.5f; float half_h = model.height * 0.5f;
@@ -95,7 +96,8 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
                         proj[2][2] = -1.0f / (model.z_far - model.z_near);
                         proj[3][2] = -model.z_near / (model.z_far - model.z_near);
                     }
-                    if (ndc_target.y_direction == NDCYDirection::UP) { proj[1][1] *= -1.0f; }
+                    // GLM's RH_NO natively maps Y UP. We only flip if the target wants Y DOWN.
+                    if (ndc_target.y_direction == NDCYDirection::DOWN) { proj[1][1] *= -1.0f; }
                 }
                 else if constexpr (std::is_same_v<T, PinholeModel>) {
                     float w = static_cast<float>(model.width_px); float h = static_cast<float>(model.height_px);
@@ -113,6 +115,8 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
                         proj[2][2] = (model.z_far + model.z_near) / (model.z_far - model.z_near);
                         proj[3][2] = -(2.0f * model.z_far * model.z_near) / (model.z_far - model.z_near);
                     }
+                    // Pinhole inherently maps +Y DOWN in image coordinates. 
+                    // So we MUST flip if the target wants Y UP (like OpenGL).
                     if (ndc_target.y_direction == NDCYDirection::UP) {
                         proj[1][1] *= -1.0f; proj[2][1] *= -1.0f;
                     }

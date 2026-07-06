@@ -199,7 +199,8 @@ static void RenderFrame(entt::registry& registry) {
                     
                     // Viewport Transform
                     int px = static_cast<int>((ndc.x + 1.0f) * half_w);
-                    int py = static_cast<int>((1.0f - ndc.y) * half_h);
+                    int py = static_cast<int>((ndc.y + 1.0f) * half_h);
+                    // int py = static_cast<int>((1.0f - ndc.y) * half_h); // Do not flip! OpenCV Convention!!
                     
                     software::SWRDrawPoint(
                         render_target, depth_buffer, 
@@ -254,46 +255,7 @@ static void RenderFrame(entt::registry& registry) {
                     );
                 }
             }
-            else if (!mesh.indices.empty()) {
-                std::vector<data::MeshMaterial> default_submesh;
-                const std::vector<data::MeshMaterial>* active_submeshes = &mesh.materials;
 
-                if (mesh.materials.empty()) {
-                    default_submesh.push_back({0, static_cast<uint32_t>(mesh.indices.size()), entt::null});
-                    active_submeshes = &default_submesh;
-                }
-
-                for (const auto& submesh : *active_submeshes) {
-                    glm::vec4 mat_base_color(1.0f, 1.0f, 1.0f, 1.0f);
-                    const data::ImageData* active_albedo = nullptr;
-                    software::ColorFormatCache tex_format{};
-                    
-                    if (registry.valid(submesh.material_entity) && registry.all_of<data::MaterialRuntimeComponent>(submesh.material_entity)) {
-                        MaterialHandle mat_handle = registry.get<data::MaterialRuntimeComponent>(submesh.material_entity).handle;
-                        auto mat_it = ctx.materials.find(mat_handle);
-                        
-                        if (mat_it != ctx.materials.end()) {
-                            mat_base_color = mat_it->second.base_color;
-                            
-                            if (registry.valid(mat_it->second.albedo_map) && registry.all_of<data::TextureRuntimeComponent>(mat_it->second.albedo_map)) {
-                                TextureHandle tex_handle = registry.get<data::TextureRuntimeComponent>(mat_it->second.albedo_map).handle;
-                                if (ctx.textures.find(tex_handle) != ctx.textures.end()) {
-                                    active_albedo = &ctx.textures[tex_handle];
-                                    tex_format = ctx.tex_formats[tex_handle];
-                                }
-                            }
-                        }
-                    }
-
-                    software::SWRRender3DMesh(
-                        render_target, depth_buffer, mesh, ctx.working_vertex_buffer,
-                        submesh.index_offset, submesh.index_count, 
-                        mat_base_color, active_albedo, 
-                        ctx.rt_formats[cam.target_fbo], tex_format,
-                        disable_textures, show_uvs, runtime_affine_override, draw_wireframes
-                    );
-                }
-            }
         }
     }
 

@@ -198,6 +198,9 @@ static bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t
     glDepthFunc(GL_LESS);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
+    
+    // Clockwise triangles are the front (left-handed coord system)
+    glFrontFace(GL_CW);
 
     // attribute location 3 -> Color. If missing default to white
     glVertexAttrib4f(3, 1.0f, 1.0f, 1.0f, 1.0f);
@@ -356,7 +359,7 @@ static void RenderFrame(entt::registry& registry) {
         }
     }
 
-    // 2D UI RENDERING
+    // 2D UI Rendering
     auto target_main_it = ctx.render_targets.find(TARGET_MAIN);
     if (target_main_it != ctx.render_targets.end()) {
         const GLRenderTarget& main_rt = target_main_it->second;
@@ -765,7 +768,7 @@ static void Present(entt::registry& registry) {
 
     // GLFW Window Presentation Support
     else if (ctx.active_window->type == RHIWindowType::GLFW) {
-GLFWwindow* gl_window = static_cast<GLFWwindow*>(ctx.active_window->native_handle);
+        GLFWwindow* gl_window = static_cast<GLFWwindow*>(ctx.active_window->native_handle);
         if (!gl_window) return;
 
         // Fetch our rendered offscreen canvas
