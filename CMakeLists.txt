@@ -51,6 +51,7 @@ option(RRL_BUILD_WINDOW_OPENCV      "Build the OpenCV Window presentation layer"
 # Building GLFW windowing without OpenGL backend is not supported.
 # option(RRL_BUILD_WINDOW_GLFW      "Build the GLFW Window presentation layer" OFF) 
 
+option(RRL_OPENGL_EMBED_SHADERS     "Bake OpenGL shaders into the binary instead of loading from disk (on release mode we cant disable this)" ON)
 
 
 # --- Native ARCH -------------------------------------------------
@@ -273,6 +274,8 @@ if(RRL_DESKTOP_TARGET AND RRL_BUILD_BACKEND_OPENGL)
 endif()
 if (RRL_BUILD_WINDOW_GLFW AND RRL_BUILD_BACKEND_OPENGL)
     list(APPEND RRL_SOURCES 
+        src/rhi/opengl/Shader.cpp
+        src/rhi/opengl/ShaderManager.cpp
         src/rhi/opengl/OpenGLRenderer.cpp
         src/rhi/window/GLFWWindow.cpp
     )
@@ -280,7 +283,23 @@ if (RRL_BUILD_WINDOW_GLFW AND RRL_BUILD_BACKEND_OPENGL)
         RRL_BUILD_BACKEND_OPENGL
         RRL_BUILD_WINDOW_GLFW
     )
+    
+    # Shader configuration
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug" AND RRL_OPENGL_EMBED_SHADERS)
+        set(RRL_OPENGL_EMBED_SHADERS OFF)
+    endif()
+
+    if (RRL_OPENGL_EMBED_SHADERS)
+            list(APPEND RRL_PRIVATE_COMPILE_DEFS RRL_OPENGL_EMBED_SHADERS)
+        else()
+            # This has to be install error prone!!
+            list(APPEND RRL_PRIVATE_COMPILE_DEFS 
+                RRL_OPENGL_RUNTIME_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/rhi/opengl/shaders"
+            )
+    endif()
 endif()
+
+
 
 
 ## WASM WebGPU Rendering

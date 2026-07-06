@@ -69,33 +69,55 @@ void SyncMeshesToRHI(entt::registry& registry) {
     }
 }
 void SyncMaterialsToRHI(entt::registry& registry) {
-    auto view = registry.view<MaterialData>(entt::exclude<MaterialRuntimeComponent>);
+    auto view = registry.view<MaterialSourceComponent>();
     
     for (auto entity : view) {
-        const auto& mat_data = view.get<MaterialData>(entity);
-        auto& runtime = registry.emplace<MaterialRuntimeComponent>(entity);
+        auto& source = view.get<MaterialSourceComponent>(entity);
+        uint32_t current_version = source.version.load(std::memory_order_acquire);
         
-        runtime.handle = rhi::CreateMaterial(registry, mat_data);
+        if (!registry.all_of<MaterialRuntimeComponent>(entity)) {
+            registry.emplace<MaterialRuntimeComponent>(entity);
+        }
+        auto& runtime = registry.get<MaterialRuntimeComponent>(entity);
         
-        // Resolve Albedo Map
-        if (registry.valid(mat_data.albedo_map) && registry.all_of<TextureRuntimeComponent>(mat_data.albedo_map)) {
-            runtime.albedo_handle = registry.get<TextureRuntimeComponent>(mat_data.albedo_map).handle;
-        } else {
-            runtime.albedo_handle = rhi::TEXTURE_NULL;
-        }
+        // If the material properties or assigned textures changed
+        if (runtime.cached_mat_version != current_version) {
+            
+            if (runtime.handle == rhi::MATERIAL_NULL) {
+                runtime.handle = rhi::CreateMaterial(registry, source.data);
+            } else {
+                rhi::UpdateMaterial(registry, runtime.handle, source.data);
+            }
+            
+            // Resolve Albedo Map
+            if (registry.valid(source.data.albedo_map) && registry.all_of<TextureRuntimeComponent>(source.data.albedo_map)) {
+                runtime.albedo_handle = registry.get<TextureRuntimeComponent>(source.data.albedo_map).handle;
+            } else {
+                runtime.albedo_handle = rhi::TEXTURE_NULL;
+            }
 
-        // Resolve Normal Map
-        if (registry.valid(mat_data.normal_map) && registry.all_of<TextureRuntimeComponent>(mat_data.normal_map)) {
-            runtime.normal_handle = registry.get<TextureRuntimeComponent>(mat_data.normal_map).handle;
-        } else {
-            runtime.normal_handle = rhi::TEXTURE_NULL;
-        }
+            // Resolve Normal Map
+            if (registry.valid(source.data.normal_map) && registry.all_of<TextureRuntimeComponent>(source.data.normal_map)) {
+                runtime.normal_handle = registry.get<TextureRuntimeComponent>(source.data.normal_map).handle;
+            } else {
+                runtime.normal_handle = rhi::TEXTURE_NULL;
+            }
 
-        // Resolve Metallic/Roughness Map
-        if (registry.valid(mat_data.metallic_roughness_map) && registry.all_of<TextureRuntimeComponent>(mat_data.metallic_roughness_map)) {
-            runtime.metallic_roughness_handle = registry.get<TextureRuntimeComponent>(mat_data.metallic_roughness_map).handle;
-        } else {
-            runtime.metallic_roughness_handle = rhi::TEXTURE_NULL;
+            // Resolve Metallic/Roughness Map
+            if (registry.valid(source.data.metallic_roughness_map) && registry.all_of<TextureRuntimeComponent>(source.data.metallic_roughness_map)) {
+                runtime.metallic_roughness_handle = registry.get<TextureRuntimeComponent>(source.data.metallic_roughness_map).handle;
+            } else {
+                runtime.metallic_roughness_handle = rhi::TEXTURE_NULL;
+            }
+
+            // Resolve Emmisive Map
+            if (registry.valid(source.data.emissive_map) && registry.all_of<TextureRuntimeComponent>(source.data.emissive_map)) {
+                runtime.metallic_roughness_handle = registry.get<TextureRuntimeComponent>(source.data.emissive_map).handle;
+            } else {
+                runtime.metallic_roughness_handle = rhi::TEXTURE_NULL;
+            }
+
+            runtime.cached_mat_version = current_version;
         }
     }
 }

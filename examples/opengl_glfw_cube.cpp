@@ -21,7 +21,7 @@
 
 
 // Helper Function to Create a 3D Cube
-rrl::data::MeshData CreateWireframeCube(float size) {
+rrl::data::MeshData CreateWireframeCube(float size, entt::entity material) {
     rrl::data::MeshData mesh;
     mesh.topology = rrl::data::MeshTopology::TRIANGLES;
     float h = size * 0.5f;
@@ -39,6 +39,8 @@ rrl::data::MeshData CreateWireframeCube(float size) {
         2, 3, 7,  2, 7, 6, // Back face
         3, 0, 4,  3, 4, 7  // Left face
     };
+
+    mesh.materials.push_back({0, static_cast<uint32_t>(mesh.indices.size()), material});
     return mesh;
 }
 
@@ -71,7 +73,12 @@ int main() {
 
 
     // 3D Cube Creation
-    entt::entity cube_asset = rrl::data::CreateMesh(registry, "cube_mesh", CreateWireframeCube(2.0f));
+    rrl::data::MaterialData unlit_blue;
+    unlit_blue.shading_model = rrl::data::ShadingModel::UNLIT;
+    unlit_blue.base_color = glm::vec4(0.2f, 0.6f, 1.0f, 1.0f); 
+    entt::entity cube_mat = rrl::data::CreateMaterial(registry, "blue_mat", unlit_blue);
+
+    entt::entity cube_asset = rrl::data::CreateMesh(registry, "cube_mesh", CreateWireframeCube(2.0f, cube_mat));
     auto cube_obj = registry.create();
     rrl::tf::AddTransform(registry, cube_obj, glm::vec3(0.0f, 0.0f, 0.0f));
     rrl::data::BindMesh(registry, cube_obj, cube_asset);
@@ -81,6 +88,7 @@ int main() {
     ui_image.width = ui_w;
     ui_image.height = ui_h;
     ui_image.channels = rrl::data::ImageChannelLayout::CH_3;
+    ui_image.color_layout  = rrl::data::ImageColorLayout::RGB;
     ui_image.data_type = rrl::data::ImageDataType::UINT8;
     entt::entity ui_texture = rrl::data::CreateTexture(registry, "ui_image", std::move(ui_image));
     entt::entity ui_obj     = registry.create();
@@ -109,10 +117,11 @@ int main() {
 
         // 2D UI Texture Update
         rrl::data::ImageData dynamic_frame;
-        dynamic_frame.width     = ui_w;
-        dynamic_frame.height    = ui_h;
-        dynamic_frame.channels  = rrl::data::ImageChannelLayout::CH_3;
-        dynamic_frame.data_type = rrl::data::ImageDataType::UINT8;
+        dynamic_frame.width         = ui_w;
+        dynamic_frame.height        = ui_h;
+        dynamic_frame.channels      = rrl::data::ImageChannelLayout::CH_3;
+        dynamic_frame.color_layout  = rrl::data::ImageColorLayout::RGB;
+        dynamic_frame.data_type     = rrl::data::ImageDataType::UINT8;
         dynamic_frame.data.resize(ui_w * ui_h * 3);
         uint8_t shift = static_cast<uint8_t>((std::sin(rotation_z) * 0.5f + 0.5f) * 255.0f);
         std::fill(dynamic_frame.data.begin(), dynamic_frame.data.end(), shift);

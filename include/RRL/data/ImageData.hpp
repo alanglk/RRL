@@ -30,6 +30,10 @@ enum class ImageChannelLayout : uint8_t {
     CH_4 = 4    // Color + Alpha
 };
 
+enum class ImageOrigin {
+    TOP_LEFT,       // Standard (OpenCV, STB Image, Vulkan, UI)
+    BOTTOM_LEFT     // OpenGL Native FBOs
+};
 
 /**
  * @brief Defines the semantic meaning of the channels (Color Space).
@@ -54,6 +58,7 @@ struct ImageData {
     ImageChannelLayout channels     { ImageChannelLayout::CH_1 };   // Image number of channels
     ImageDataType data_type         { ImageDataType::FLOAT32 };     // Image payload data type
     ImageColorLayout color_layout   { ImageColorLayout::NONE };     // Image color space layout (defines the stride)
+    ImageOrigin origin              { ImageOrigin::TOP_LEFT };      // where does the data start from?
     
     
     // Image raw data blob container

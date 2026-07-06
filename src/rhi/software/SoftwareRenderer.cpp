@@ -1,13 +1,15 @@
 // RRL/src/rhi/software/SoftwareRenderer.cpp
 
-#include "RRL/data/ImageData.hpp"
+
+// Runtime components
 #include "RRL/camera/CameraComponents.hpp"
 #include "RRL/tf/TFComponents.hpp"
-
 #include "RRL/data/TextureComponents.hpp"
 #include "RRL/data/MeshComponents.hpp"
 #include "RRL/data/MaterialComponents.hpp"
 
+
+#include "RRL/data/ImageData.hpp"
 #include "RRL/rhi/RHILayers.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
 #include "RRL/rhi/software/SWRRasterizer.hpp"
@@ -24,12 +26,15 @@
 
 // OpenCV Window Presentation Support
 #ifdef RRL_BUILD_WINDOW_OPENCV 
-
 #include <opencv2/core/mat.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #endif
 
+#ifdef RRL_BUILD_WINDOW_GLFW
+#include <glad/glad.h> // GLFW windowing ensures OpenGL is available 
+#include <GLFW/glfw3.h>
+#endif
 
 namespace rrl::rhi::software {
 
@@ -63,6 +68,16 @@ struct SoftwareContext {
     MaterialHandle next_mat_handle  { 1 };
     
     RHIDebugFlag debug_flag { RHIDebugFlag::FLAG_NONE };
+    
+
+    // GPFW presentation requires some OpenGL state variables
+    #ifdef RRL_BUILD_WINDOW_GLFW
+    bool gl_pointers_loaded { false };
+    uint32_t presentation_fbo { 0 };
+    uint32_t presentation_tex { 0 };
+    uint32_t last_blit_w { 0 };
+    uint32_t last_blit_h { 0 };
+    #endif
 };
 
 
@@ -103,6 +118,22 @@ static bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t
 }
 static void Shutdown(entt::registry& registry) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
+    auto& ctx = registry.ctx().get<SoftwareContext>();
+    
+    #ifdef RRL_BUILD_WINDOW_GLFW
+    if (ctx.presentation_tex != 0 || ctx.presentation_fbo != 0) {
+        if (ctx.active_window && ctx.active_window->type == RHIWindowType::GLFW) {
+            GLFWwindow* gl_window = static_cast<GLFWwindow*>(ctx.active_window->native_handle);
+            if (gl_window) {
+                glfwMakeContextCurrent(gl_window);
+                if (ctx.presentation_tex) glDeleteTextures(1, &ctx.presentation_tex);
+                if (ctx.presentation_fbo) glDeleteFramebuffers(1, &ctx.presentation_fbo);
+                glfwMakeContextCurrent(nullptr);
+            }
+        }
+    }
+    #endif
+
     registry.ctx().erase<SoftwareContext>();
 }
 static void RenderFrame(entt::registry& registry) {
@@ -181,6 +212,48 @@ static void RenderFrame(entt::registry& registry) {
             }
             
             // Triangles and Lines Rasterization
+            else if (!mesh.indices.empty()) {
+                std::vector<data::MeshMaterial> default_submesh;
+                const std::vector<data::MeshMaterial>* active_submeshes = &mesh.materials;
+
+                if (mesh.materials.empty()) {
+                    default_submesh.push_back({0, static_cast<uint32_t>(mesh.indices.size()), entt::null});
+                    active_submeshes = &default_submesh;
+                }
+
+                for (const auto& submesh : *active_submeshes) {
+                    glm::vec4 mat_base_color(1.0f, 1.0f, 1.0f, 1.0f);
+                    const data::ImageData* active_albedo = nullptr;
+                    software::ColorFormatCache tex_format{};
+                    
+                    if (registry.valid(submesh.material_entity) && registry.all_of<data::MaterialRuntimeComponent>(submesh.material_entity)) {
+                        // Material resolution
+                        const auto& mat_runtime = registry.get<data::MaterialRuntimeComponent>(submesh.material_entity);
+                        
+                        // Base material values
+                        auto mat_it = ctx.materials.find(mat_runtime.handle);
+                        if (mat_it != ctx.materials.end()) {
+                            mat_base_color = mat_it->second.base_color;
+                        }
+
+                        // Material textures
+                        if (mat_runtime.albedo_handle != rhi::TEXTURE_NULL) {
+                            if (ctx.textures.find(mat_runtime.albedo_handle) != ctx.textures.end()) {
+                                active_albedo = &ctx.textures[mat_runtime.albedo_handle];
+                                tex_format = ctx.tex_formats[mat_runtime.albedo_handle];
+                            }
+                        }
+                    }
+
+                    software::SWRRender3DMesh(
+                        render_target, depth_buffer, mesh, ctx.working_vertex_buffer,
+                        submesh.index_offset, submesh.index_count, 
+                        mat_base_color, active_albedo, 
+                        ctx.rt_formats[cam.target_fbo], tex_format,
+                        disable_textures, show_uvs, runtime_affine_override, draw_wireframes
+                    );
+                }
+            }
             else if (!mesh.indices.empty()) {
                 std::vector<data::MeshMaterial> default_submesh;
                 const std::vector<data::MeshMaterial>* active_submeshes = &mesh.materials;
@@ -407,13 +480,95 @@ static void Present(entt::registry& registry) {
         #else
 
         LOG_ERROR("SoftwareBackend was requested to present the rendered FBO on an OpenCV window but OpenCV support is not compiled on the library");
-        return;
         #endif
+        return;
     }
 
-    // TODO: Add GLFW window support
     // GLFW Window Presentation Support
-    // ...
+    else if (ctx.active_window->type == RHIWindowType::GLFW) {
+        #ifdef RRL_BUILD_WINDOW_GLFW
+        GLFWwindow* gl_window = static_cast<GLFWwindow*>(window->native_handle);
+        if (!gl_window) return;
+
+        glfwMakeContextCurrent(gl_window);
+        if (!ctx.gl_pointers_loaded) {
+            gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+            ctx.gl_pointers_loaded = true;
+        }
+        if (ctx.presentation_tex == 0) {
+            glGenTextures(1, &ctx.presentation_tex);
+            glGenFramebuffers(1, &ctx.presentation_fbo);
+        }
+        glBindTexture(GL_TEXTURE_2D, ctx.presentation_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        // Fetch data
+        data::ImageData main_fbo = GetTargetImage(registry, TARGET_MAIN);
+        if (main_fbo.data.empty()) return;
+
+        // OpenGL Format Mapping
+        GLenum gl_internal_format   = GL_RGB8;
+        GLenum gl_type              = GL_UNSIGNED_BYTE;
+        if (main_fbo.data_type == data::ImageDataType::UINT8) {
+            gl_type = GL_UNSIGNED_BYTE;
+            if (main_fbo.channels == data::ImageChannelLayout::CH_1)        gl_internal_format = GL_R8;
+            else if (main_fbo.channels == data::ImageChannelLayout::CH_3)   gl_internal_format = GL_RGB8;
+            else if (main_fbo.channels == data::ImageChannelLayout::CH_4)   gl_internal_format = GL_RGBA8;
+        } 
+        else if (main_fbo.data_type == data::ImageDataType::FLOAT32) {
+            gl_type = GL_FLOAT;
+            if (main_fbo.channels == data::ImageChannelLayout::CH_1)        gl_internal_format = GL_R32F;
+            else if (main_fbo.channels == data::ImageChannelLayout::CH_3)   gl_internal_format = GL_RGB32F;
+            else if (main_fbo.channels == data::ImageChannelLayout::CH_4)   gl_internal_format = GL_RGBA32F;
+        }
+
+        // OpenGL Color Layout Mapping
+        GLenum gl_format = GL_RGB;
+        if (main_fbo.color_layout == data::ImageColorLayout::RGB)       gl_format = GL_RGB;
+        else if (main_fbo.color_layout == data::ImageColorLayout::BGR)  gl_format = GL_BGR;
+        else if (main_fbo.color_layout == data::ImageColorLayout::RGBA) gl_format = GL_RGBA;
+        else if (main_fbo.color_layout == data::ImageColorLayout::BGRA) gl_format = GL_BGRA;
+        else if (main_fbo.channels == data::ImageChannelLayout::CH_1)   gl_format = GL_RED;
+
+        // OpenGL Image Origin Mapping
+        // If the CPU image is Top-Left, we must flip it vertically for OpenGL's Bottom-Left screen.
+        int win_w, win_h;
+        int dst_y0 = 0;
+        int dst_y1 = win_h;
+        glfwGetFramebufferSize(gl_window, &win_w, &win_h);
+        if (main_fbo.origin == data::ImageOrigin::TOP_LEFT) {
+            dst_y0 = win_h;
+            dst_y1 = 0;
+        }
+
+        // Upload CPU pixels to GPU
+        if (ctx.last_blit_w != main_fbo.width || ctx.last_blit_h != main_fbo.height) {
+            glTexImage2D(GL_TEXTURE_2D, 0, gl_internal_format, main_fbo.width, main_fbo.height, 0, gl_format, gl_type, main_fbo.data.data());
+            ctx.last_blit_w = main_fbo.width;
+            ctx.last_blit_h = main_fbo.height;
+        } else {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, main_fbo.width, main_fbo.height, gl_format, gl_type, main_fbo.data.data());
+        }
+
+        // Hardware Presentation (Blitting)
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, ctx.presentation_fbo);
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx.presentation_tex, 0);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // Bind native OS window
+        glBlitFramebuffer(
+            0, 0, main_fbo.width, main_fbo.height,  // Source Rect
+            0, dst_y0, win_w, dst_y1,               // Dest Rect (Dynamically flipped)
+            GL_COLOR_BUFFER_BIT, 
+            GL_NEAREST
+        );
+        glfwSwapBuffers(gl_window);
+
+        #else
+        LOG_ERROR("SoftwareBackend was requested to present on a GLFW window but GLFW support is not compiled.");
+        #endif
+        return;
+    }
+
 }
 static void OnWindowDestroyed(entt::registry& registry, const RHIWindow* window) {
     if (!registry.ctx().contains<SoftwareContext>()) return;
@@ -473,11 +628,11 @@ RHIBackend CreateSoftwareBackend() {
     // Presentation
     backend.GetTargetImage      = GetTargetImage;
     backend.Present             = Present;
+    backend.OnWindowDestroyed   = OnWindowDestroyed;
     
     // Debugging
     backend.SetDebugFlag        = SetDebugFlag;
     backend.GetActiveDebugFlags = GetActiveDebugFlags;
-    backend.OnWindowDestroyed   = OnWindowDestroyed;
     
     return backend;
 }

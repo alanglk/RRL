@@ -30,7 +30,8 @@
         "RRL_TESTING": "ON",
         "RRL_EXAMPLES": "ON",
         "RRL_BENCHMARKS": "OFF",
-        "RRL_SHARED": "OFF"
+        "RRL_SHARED": "OFF",
+        "RRL_OPENGL_EMBED_SHADERS": "OFF"
       }
     },
     {
