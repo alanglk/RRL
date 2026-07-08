@@ -142,24 +142,40 @@ TEST_F(AssetManagerTest, MaterialToTextureDependency) {
     EXPECT_EQ(GetMaterialDebugReport(registry).tracked_assets.size(), 0);
     EXPECT_EQ(GetTextureDebugReport(registry).tracked_assets.size(), 0) << "Texture survived even though its parent material was destroyed";
 }
-TEST_F(AssetManagerTest, MeshToMaterialDependency) {
+TEST_F(AssetManagerTest, MeshToMaterialInstanceDependency) {
+    // Create materials
     entt::entity mat1 = CreateMaterial(registry, "mat_red", CreateDummyMaterial());
     entt::entity mat2 = CreateMaterial(registry, "mat_blue", CreateDummyMaterial());
-    entt::entity mesh = CreateMesh(registry, "mesh_car", CreateDummyMesh());
+    
+    // We modify the dummy mesh to explicitly have 2 submeshes. 
+    // This ensures our smart BindMesh function strictly accepts both materials.
+    rrl::data::MeshData dummy_mesh = CreateDummyMesh();
+    dummy_mesh.submeshes = {{0, 3}, {3, 3}}; 
+    entt::entity mesh_asset = CreateMesh(registry, "mesh_car", std::move(dummy_mesh));
 
-    // Bind materials to different parts of the mesh
-    BindMaterial(registry, mesh, mat1, 0, 3);
-    BindMaterial(registry, mesh, mat2, 3, 3);
+    // bind the assets to a world objest
+    entt::entity world_object = registry.create();
+    BindMesh(registry, world_object, mesh_asset, {mat1, mat2});
 
+    // Verify Reference Counts (Each asset has exactly 1 active user: the world_object)
     auto mat_report = GetMaterialDebugReport(registry);
     auto mesh_report = GetMeshDebugReport(registry);
 
     EXPECT_EQ(mat_report.tracked_assets["mat_red"].ref_count, 1);
     EXPECT_EQ(mat_report.tracked_assets["mat_blue"].ref_count, 1);
-    ASSERT_EQ(mesh_report.tracked_assets["mesh_car"].material_links.size(), 2);
+    EXPECT_EQ(mesh_report.tracked_assets["mesh_car"].ref_count, 1);
     
-    // Destroy Mesh -> Cascades and destroys both materials
-    DestroyAsset(registry, mesh);
+    // Unbind mat2
+    // By passing only mat1, the binder will broadcast it to both submeshes.
+    BindMesh(registry, world_object, mesh_asset, {mat1});
+    mat_report  = GetMaterialDebugReport(registry);
+    mesh_report = GetMeshDebugReport(registry);
+    EXPECT_TRUE(mat_report.tracked_assets.find("mat_blue") == mat_report.tracked_assets.end());
+    EXPECT_EQ(mat_report.tracked_assets["mat_red"].ref_count, 2);
+    EXPECT_EQ(mesh_report.tracked_assets["mesh_car"].ref_count, 1);
+    
+    // Destroy the world object -> Triggers OnMeshLinkageDestroyed (cascade delete)
+    registry.destroy(world_object);
     EXPECT_EQ(GetMeshDebugReport(registry).tracked_assets.size(), 0);
     EXPECT_EQ(GetMaterialDebugReport(registry).tracked_assets.size(), 0);
 }

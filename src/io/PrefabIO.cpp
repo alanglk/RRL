@@ -137,13 +137,10 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
         uint32_t current_index_count = 0;
         size_t index_offset = 0;
         
-        // Lambda to pack a name into a temporary entity identifyer
-        auto GetMaterialHashAsEntity = [&](int mat_id) -> entt::entity {
-            if (mat_id >= 0 && mat_id < static_cast<int>(tiny_materials.size())) {
-                entt::id_type hash = entt::hashed_string(tiny_materials[mat_id].name.c_str()).value();
-                return static_cast<entt::entity>(hash);
-            }
-            return entt::null;
+        // Lambda to get a mat name based on its assigned id
+        auto GetMaterialName = [&](int mat_id) -> std::string {
+            if (mat_id >= 0 && mat_id < static_cast<int>(tiny_materials.size())) return tiny_materials[mat_id].name;
+            return "";
         };
 
         for (size_t f = 0; f < tiny_shape.mesh.num_face_vertices.size(); f++) {
@@ -153,11 +150,8 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
             // Sub-mesh boundary detection based on material ID changes
             if (face_mat_id != current_material_id) {
                 if (current_index_count > 0) {
-                    parsed_node.mesh.materials.push_back({
-                        current_index_offset, 
-                        current_index_count, 
-                        GetMaterialHashAsEntity(current_material_id)
-                    });
+                    parsed_node.mesh.submeshes.push_back({current_index_offset, current_index_count});
+                    parsed_node.submesh_material_names.push_back(GetMaterialName(current_material_id));
                 }
                 current_material_id = face_mat_id;
                 current_index_offset = static_cast<uint32_t>(parsed_node.mesh.indices.size());
@@ -230,11 +224,8 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
 
         // Push the final sub-mesh material group
         if (current_index_count > 0) {
-            parsed_node.mesh.materials.push_back({
-                current_index_offset, 
-                current_index_count, 
-                GetMaterialHashAsEntity(current_material_id)
-            });
+            parsed_node.mesh.submeshes.push_back({current_index_offset, current_index_count});
+            parsed_node.submesh_material_names.push_back(GetMaterialName(current_material_id));
         }
         
         // Push the fully assembled node to the root

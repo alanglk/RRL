@@ -23,7 +23,7 @@ using namespace rrl;
 
 // --- Procedural Geometry Helpers ---
 
-data::MeshData CreateProceduralCone(float radius, float height, entt::entity mat) {
+data::MeshData CreateProceduralCone(float radius, float height) {
     data::MeshData mesh;
     mesh.topology = data::MeshTopology::TRIANGLES;
     
@@ -42,11 +42,11 @@ data::MeshData CreateProceduralCone(float radius, float height, entt::entity mat
         mesh.indices.insert(mesh.indices.end(), {0, static_cast<uint32_t>(i), static_cast<uint32_t>(next_i)});
     }
 
-    mesh.materials.push_back({0, static_cast<uint32_t>(mesh.indices.size()), mat});
+    mesh.submeshes = {{0, static_cast<uint32_t>(mesh.indices.size())}};
     return mesh;
 }
 
-data::MeshData CreateProceduralCar(entt::entity mat) {
+data::MeshData CreateProceduralCar() {
     // A simple stretched box representing the chassis (ISO 8855: +X Forward, +Y Left, +Z Up)
     data::MeshData mesh;
     mesh.topology = data::MeshTopology::TRIANGLES;
@@ -68,7 +68,7 @@ data::MeshData CreateProceduralCar(entt::entity mat) {
         3, 0, 4,  3, 4, 7  // Back
     };
 
-    mesh.materials.push_back({0, static_cast<uint32_t>(mesh.indices.size()), mat});
+    mesh.submeshes = {{0, static_cast<uint32_t>(mesh.indices.size())}};
     return mesh;
 }
 
@@ -100,8 +100,8 @@ int main() {
     entt::entity cone_mat_id = data::CreateMaterial(registry, "mat_cone", mat_cone);
     entt::entity car_mat_id  = data::CreateMaterial(registry, "mat_car", mat_car);
 
-    entt::entity cone_mesh = data::CreateMesh(registry, "mesh_cone", CreateProceduralCone(0.3f, 0.8f, cone_mat_id));
-    entt::entity car_mesh  = data::CreateMesh(registry, "mesh_car", CreateProceduralCar(car_mat_id));
+    entt::entity cone_mesh = data::CreateMesh(registry, "mesh_cone", CreateProceduralCone(0.3f, 0.8f));
+    entt::entity car_mesh  = data::CreateMesh(registry, "mesh_car", CreateProceduralCar());
 
     // 3. Track Generation
     float track_radius_x = 40.0f;
@@ -122,7 +122,7 @@ int main() {
         // Spawn Left Cone
         auto cone_l = registry.create();
         tf::AddTransform(registry, cone_l, pos + (left * track_width * 0.5f));
-        data::BindMesh(registry, cone_l, cone_mesh);
+        data::BindMesh(registry, cone_l, cone_mesh, {cone_mat_id});
 
         // Spawn Right Cone
         auto cone_r = registry.create();
@@ -133,7 +133,7 @@ int main() {
     // 4. Vehicle & Camera Hierarchy Setup
     auto vehicle = registry.create();
     tf::AddTransform(registry, vehicle, glm::vec3(0.0f));
-    data::BindMesh(registry, vehicle, car_mesh);
+    data::BindMesh(registry, vehicle, car_mesh, {car_mat_id});
 
     camera::PerspectiveModel cam_model;
     cam_model.fov_y_radians = glm::radians(75.0f);

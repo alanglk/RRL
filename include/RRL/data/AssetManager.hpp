@@ -97,9 +97,11 @@ entt::entity CreateMesh(entt::registry& registry, const MeshID& mesh_id,MeshData
 void UpdateMesh(entt::registry& registry, entt::entity mesh_asset, MeshData&& mesh_data);
 /**
  * @brief Binds a loaded mesh asset to a physical world entity.
- * This tells the RHI to draw the mesh at the entity's Transform location.
+ * Maps the provided materials 1:1 to the mesh submeshes. 
+ * If 1 material is provided, it is broadcast to all submeshes.
  */
 void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity mesh_asset, 
+              const std::vector<entt::entity>& materials = {}, 
               rhi::RenderLayer layer = rhi::RenderLayer::LAYER_DEFAULT);
 /**
  * @brief Dynamically updates the culling layer of an already bound physical object.
@@ -122,12 +124,6 @@ entt::entity CreateMaterial(entt::registry& registry, const MaterialID& material
  * Automatically syncs the changes to the underlying RHI hardware handle.
  */
 void UpdateMaterial(entt::registry& registry, entt::entity material_asset, const MaterialData& mat_data);
-/**
- * @brief A helper to quickly apply a material to a mesh asset.
- * If index_count is 0, it applies the material to the entire mesh.
- */
-void BindMaterial(entt::registry& registry, entt::entity mesh_asset, entt::entity material_asset, 
-                  uint32_t index_offset = 0, uint32_t index_count = 0);
 /**
  * @brief Binds a texture asset as a certain material texture type to an actual material asset.
  */

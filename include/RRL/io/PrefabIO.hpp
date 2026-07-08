@@ -32,6 +32,9 @@ struct IONode {
     std::string name;       // Mesh node name for instancing / identification
     data::MeshData mesh;    // Node mesh (can be empty if it's just a transform group)
     
+    // Maps 1:1 with mesh.submeshes. Stores the parsed string names of the materials.
+    std::vector<std::string> submesh_material_names;
+    
     // Node default relative transform to its parent
     glm::vec3 local_position {0.0f};
     glm::quat local_rotation {1.0f, 0.0f, 0.0f, 0.0f};

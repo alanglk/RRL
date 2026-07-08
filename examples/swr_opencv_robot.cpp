@@ -128,7 +128,7 @@ private:
 
         // Load the robot's texture
         auto checkerboard = GenerateCheckerboardTexture(512, 512, 64);
-        std::string virtual_tex_path = "robot_albedo";
+        rrl::data::TextureID virtual_tex_path = "robot_albedo";
         rrl::data::CreateTexture(registry, virtual_tex_path, std::move(checkerboard));
 
         // Create the robot's materials
@@ -142,14 +142,12 @@ private:
         rrl::io::IONode chassis_node;
         chassis_node.name = "chassis";
         chassis_node.mesh = GenerateCuboidMesh({3.0f, 2.0f, 1.5f});
-
-        // Pack the materials into the prefab
-        entt::id_type mat_hash = entt::hashed_string("robot_chassis_mat").value();
-        chassis_node.mesh.materials.push_back({
+        chassis_node.mesh.submeshes.push_back({
             0, // index offset
-            static_cast<uint32_t>(chassis_node.mesh.indices.size()), // index count
-            static_cast<entt::entity>(mat_hash)                  // Pack the string hash
+            static_cast<uint32_t>(chassis_node.mesh.indices.size()) // index count
         });
+        chassis_node.submesh_material_names.push_back("robot_chassis_mat");
+
         robot_prefab.root_nodes.push_back(std::move(chassis_node));
         rrl::scene::PreloadPrefabBlueprint(registry, robot_prefab_id, std::move(robot_prefab));
     }
@@ -195,7 +193,7 @@ public:
         
         
         // Robot 2D UI POV
-        std::string fbo_id = "fbo_mirror_" + std::to_string(static_cast<uint32_t>(robot_instance));
+        rrl::data::TextureID fbo_id = "fbo_mirror_" + std::to_string(static_cast<uint32_t>(robot_instance));
         rrl::data::ImageData fbo_image_model;
         fbo_image_model.width = robot_cam_width;
         fbo_image_model.height = robot_cam_height;

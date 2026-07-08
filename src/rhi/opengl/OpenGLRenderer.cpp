@@ -3,6 +3,7 @@
 
 // Runtime components
 #include "RRL/camera/CameraComponents.hpp"
+#include "RRL/data/MeshData.hpp"
 #include "RRL/tf/TFComponents.hpp"
 #include "RRL/data/TextureComponents.hpp"
 #include "RRL/data/MeshComponents.hpp"
@@ -76,7 +77,7 @@ struct GLMesh {
     uint32_t vertex_capacity = 0;
     uint32_t index_capacity = 0;
 
-    std::vector<data::MeshMaterial> submeshes;
+    std::vector<data::MeshSubmesh> submeshes;
     GLenum topology = GL_TRIANGLES;
 };
 
@@ -324,13 +325,19 @@ static void RenderFrame(entt::registry& registry) {
             }
 
             // Triangles / Lines
-            std::vector<data::MeshMaterial> default_submesh = {{0, gl_mesh.index_count, entt::null}};
-            const std::vector<data::MeshMaterial>& active_submeshes = gl_mesh.submeshes.empty() ? default_submesh : gl_mesh.submeshes;
+            std::vector<data::MeshSubmesh> default_submesh = {{0, gl_mesh.index_count}};
+            const std::vector<data::MeshSubmesh>& active_submeshes = gl_mesh.submeshes.empty() ? default_submesh : gl_mesh.submeshes;
+            for (size_t i = 0; i < active_submeshes.size(); ++i) {
+                const auto& submesh = active_submeshes[i];
 
-            for (const auto& submesh : active_submeshes) {
+                // Fetch material from the linkage
+                entt::entity mat_entity = entt::null;
+                if (i < linkage.materials.size()) {
+                    mat_entity = linkage.materials[i];
+                }
                 auto shading_model = data::ShadingModel::UNLIT; 
-                if (registry.valid(submesh.material_entity) && registry.all_of<data::MaterialSourceComponent>(submesh.material_entity)) {
-                    shading_model = registry.get<data::MaterialSourceComponent>(submesh.material_entity).data.shading_model;
+                if (registry.valid(mat_entity) && registry.all_of<data::MaterialSourceComponent>(mat_entity)) {
+                    shading_model = registry.get<data::MaterialSourceComponent>(mat_entity).data.shading_model;
                 }
         
                 Shader* mat_shader = bind_shader(shading_model);
@@ -338,8 +345,8 @@ static void RenderFrame(entt::registry& registry) {
                 
                 mat_shader->SetMat4("u_MVP", mvp);
 
-                if (registry.valid(submesh.material_entity) && registry.all_of<data::MaterialRuntimeComponent>(submesh.material_entity)) {
-                    const auto& mat_rt = registry.get<data::MaterialRuntimeComponent>(submesh.material_entity);
+                if (registry.valid(mat_entity) && registry.all_of<data::MaterialRuntimeComponent>(mat_entity)) {
+                    const auto& mat_rt = registry.get<data::MaterialRuntimeComponent>(mat_entity);
                     
                     auto mat_it = ctx.materials.find(mat_rt.handle);
                     if (mat_it != ctx.materials.end()) {
@@ -531,7 +538,7 @@ static MeshHandle CreateMesh(entt::registry& registry, const data::MeshData& mes
     gl_mesh.index_count     = static_cast<uint32_t>(mesh_data.indices.size());
     gl_mesh.vertex_capacity = gl_mesh.vertex_count;
     gl_mesh.index_capacity  = gl_mesh.index_count;
-    gl_mesh.submeshes       = mesh_data.materials;
+    gl_mesh.submeshes       = mesh_data.submeshes;
 
 
     // Create VAO via DSA
@@ -626,7 +633,7 @@ static void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::
 
         gl_mesh.vertex_count = new_v_count;
         gl_mesh.index_count = new_i_count;
-        gl_mesh.submeshes   = mesh_data.materials;
+        gl_mesh.submeshes   = mesh_data.submeshes;
         gl_mesh.topology    = MapTopology(mesh_data.topology);
         
         return; 

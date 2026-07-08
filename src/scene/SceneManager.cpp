@@ -32,30 +32,17 @@ static PrefabNodeBlueprint ProcessIONodeRecursive(
     node_bp.local_scale = io_node.local_scale;
 
     if (!io_node.mesh.positions.empty()) {
-        auto sub_meshes = io_node.mesh.materials;
-        io_node.mesh.materials.clear(); // Strip the IO material IDs to let the asset manager handle the actual binding correctly
         std::string mesh_id = blueprint_id + "_mesh_" + node_bp.name;
         entt::entity mesh_asset = data::CreateMesh(registry, mesh_id, std::move(io_node.mesh));
-
-        for (const auto& sub_mesh : sub_meshes) {
-            auto mat_name_hash = static_cast<entt::id_type>(entt::to_integral(sub_mesh.material_entity));
-            entt::entity matched_material = entt::null;
-            
-            // Find which string key matches the packed hash
-            for (const auto& [name, entity] : material_name_lut) {
-                if (entt::hashed_string(name.c_str()).value() == mat_name_hash) {
-                    matched_material = entity;
-                    break;
-                }
-            }
-            if (matched_material != entt::null) {
-                data::BindMaterial(registry, mesh_asset, matched_material, sub_mesh.index_offset, sub_mesh.index_count);
-            } else {
-                LOG_WARN("[SceneManager] Submesh inside '{}' requested unknown material hash: ID {}.", node_bp.name, mat_name_hash);
-            }
-        }
         node_bp.mesh_asset = mesh_asset;
         
+        for (const std::string& mat_name : io_node.submesh_material_names) {
+            entt::entity matched_material = entt::null;
+            auto it = material_name_lut.find(mat_name);
+            if (it != material_name_lut.end()) matched_material = it->second;
+            node_bp.materials.push_back(matched_material);
+        }
+
         // This ensures the Mesh (and its cascaded materials/textures) stay alive 
         // as long as this blueprint exists in the cache!
         data::IncrementAssetRef(registry, mesh_asset);
@@ -99,19 +86,16 @@ static const PrefabNodeBlueprint* ResolveBlueprintPath(const PrefabCache& cache,
 }
 static void SpawnNodeRecursive(entt::registry& registry, entt::entity parent_entity, const PrefabNodeBlueprint& node, const std::string& parent_path) {
     entt::entity child_entity = registry.create();
-    
-    // node id path = "city.car.wheel"
     std::string my_path = parent_path + "." + node.name;
     registry.emplace<PrefabInstanceComponent>(child_entity, my_path);
+    
     if (node.mesh_asset != entt::null) {
-        data::BindMesh(registry, child_entity, node.mesh_asset);
+        // Pass the cached materials array cleanly into the Linkage!
+        data::BindMesh(registry, child_entity, node.mesh_asset, node.materials);
     }
     
     tf::AddTransform(registry, child_entity, parent_entity, node.local_position, node.local_rotation, node.local_scale, tf::TFDependencyPolicy::CASCADE_DELETE);
-
-    for (const auto& child_node : node.children) {
-        SpawnNodeRecursive(registry, child_entity, child_node, my_path);
-    }
+    for (const auto& child_node : node.children) SpawnNodeRecursive(registry, child_entity, child_node, my_path);
 }
 static void UnpinBlueprintAssetsRecursive(entt::registry& registry, const PrefabNodeBlueprint& node) {
     // Safely unpins all assets when a blueprint is being removed from RAM

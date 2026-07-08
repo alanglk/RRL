@@ -127,7 +127,7 @@ ColorFormatCache GetColorFormatCache(rrl::data::ImageColorLayout layout, rrl::da
 void LoadMeshDataIntoSWRMesh(const rrl::data::MeshData& mesh_data, SWRMesh& mesh_swr) {
     mesh_swr.topology               = mesh_data.topology;
     mesh_swr.indices                = mesh_data.indices;
-    mesh_swr.materials              = mesh_data.materials;
+    mesh_swr.submeshes              = mesh_data.submeshes;
     mesh_swr.active_vertex_count    = mesh_data.positions.size();
     if (mesh_swr.active_vertex_count == 0) return;
 

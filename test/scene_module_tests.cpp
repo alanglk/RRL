@@ -46,11 +46,12 @@ protected:
         };
     }
     data::MeshData CreateDummyCuboid() {
-        return {
-            .topology = data::MeshTopology::TRIANGLES,
-            .positions = {{0,0,0}, {1,0,0}, {0,1,0}},
-            .indices = {0, 1, 2}
-        };
+        data::MeshData mesh;
+        mesh.topology = data::MeshTopology::TRIANGLES;
+        mesh.positions = {{0,0,0}, {1,0,0}, {0,1,0}};
+        mesh.indices = {0, 1, 2};
+        mesh.submeshes.push_back({0, 3}); 
+        return mesh;
     }
     io::IOPrefab CreateDummyPrefab(const std::string& prefab_id) {
         io::IOPrefab prefab; 
@@ -73,10 +74,8 @@ protected:
         chassis_node.mesh = CreateDummyCuboid();
 
         // Bind Material Hash to Mesh
-        entt::id_type mat_hash = entt::hashed_string("dummy_mat").value();
-        chassis_node.mesh.materials.push_back({
-            0, 3, static_cast<entt::entity>(mat_hash)
-        });
+        chassis_node.submesh_material_names.push_back("dummy_mat");
+
         prefab.root_nodes.push_back(std::move(chassis_node));
         return prefab;
     }
@@ -104,7 +103,7 @@ protected:
         }
 
         // Generate Materials
-        std::vector<entt::id_type> mat_hashes;
+        std::vector<std::string> mat_names;
         for (uint32_t i = 0; i < num_materials; ++i) {
             io::IOMaterial mat;
             mat.name = "mat_" + std::to_string(i);
@@ -112,18 +111,17 @@ protected:
             
             mat.albedo_path = tex_paths[i % num_textures]; // modulo to ensure every texture is used at least once
             prefab.materials.push_back(mat);
-            mat_hashes.push_back(entt::hashed_string(mat.name.c_str()).value());
+            mat_names.push_back(mat.name);
         }
 
         // Generate Meshes
         std::vector<data::MeshData> generated_meshes;
+        std::vector<std::string> mesh_mat_names;
         for (uint32_t i = 0; i < num_meshes; ++i) {
-            auto mesh = CreateDummyCuboid();
+            generated_meshes.push_back(CreateDummyCuboid());
             
-            entt::id_type mat_hash = mat_hashes[i % num_materials]; // modulo to ensure every material is used at least once
-            mesh.materials.push_back({0, 3, static_cast<entt::entity>(mat_hash)});
-            
-            generated_meshes.push_back(std::move(mesh));
+            // Assign the material string identifier that pairs with this mesh
+            mesh_mat_names.push_back(mat_names[i % num_materials]);
         }
 
         // Generate Flat Nodes

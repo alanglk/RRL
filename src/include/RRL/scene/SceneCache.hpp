@@ -17,6 +17,9 @@ struct PrefabNodeBlueprint {
     glm::quat local_rotation {1.0f, 0.0f, 0.0f, 0.0f};
     glm::vec3 local_scale {1.0f};
     
+    // Node's linked materials
+    std::vector<entt::entity> materials;
+    
     // Node's children
     std::vector<PrefabNodeBlueprint> children;
 };

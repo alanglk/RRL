@@ -17,7 +17,7 @@ namespace rrl::debug::rhi {
 
 // --- Helpers -----------------------------------------------------
 static entt::entity GetOrCreateWireframeDebugMaterial(entt::registry& registry) {
-    std::string mat_id = "debug_wireframe_mat";
+    data::MaterialID mat_id = "debug_wireframe_mat";
     entt::entity mat = data::GetCachedMaterial(registry, mat_id);
     if (mat != entt::null) return mat;
     
@@ -96,9 +96,11 @@ entt::entity SpawnCameraFrustum(entt::registry& registry, entt::entity camera_en
     
 
     // Register the Asset
-    std::string mesh_id = "debug_frustum_" + std::to_string(static_cast<uint32_t>(camera_entity));
+    data::MeshID mesh_id = "debug_frustum_" + std::to_string(static_cast<uint32_t>(camera_entity));
     entt::entity mesh_asset = data::CreateMesh(registry, mesh_id, std::move(frustum_mesh));
-    data::BindMaterial(registry, mesh_asset, GetOrCreateWireframeDebugMaterial(registry));
+
+    // Fetch the debug material
+    entt::entity debug_mat = GetOrCreateWireframeDebugMaterial(registry);
 
     // Spawn Physical Entity and Mount it to the Camera
     entt::entity frustum_entity = registry.create();
@@ -106,7 +108,7 @@ entt::entity SpawnCameraFrustum(entt::registry& registry, entt::entity camera_en
     tf::AttachChild(registry, camera_entity, frustum_entity, tf::TFDependencyPolicy::CASCADE_DELETE);
     
     // Bind to the debug layer
-    data::BindMesh(registry, frustum_entity, mesh_asset, rrl::rhi::RenderLayer::LAYER_DEBUG);
+    data::BindMesh(registry, frustum_entity, mesh_asset, { debug_mat }, rrl::rhi::RenderLayer::LAYER_DEBUG);
     return frustum_entity;
 }
 entt::entity SpawnDebugGrid(entt::registry& registry, float size, int subdivisions) {
@@ -134,12 +136,13 @@ entt::entity SpawnDebugGrid(entt::registry& registry, float size, int subdivisio
     }
 
     entt::entity mesh_asset = data::CreateMesh(registry, "debug_grid", std::move(grid_mesh));
-    data::BindMaterial(registry, mesh_asset, GetOrCreateWireframeDebugMaterial(registry));
+    entt::entity debug_mat = GetOrCreateWireframeDebugMaterial(registry);
+
     entt::entity grid_entity = registry.create();
     tf::AddTransform(registry, grid_entity);
     
     // Bind to the debug layer
-    data::BindMesh(registry, grid_entity, mesh_asset, rrl::rhi::RenderLayer::LAYER_DEBUG);
+    data::BindMesh(registry, grid_entity, mesh_asset, { debug_mat }, rrl::rhi::RenderLayer::LAYER_DEBUG);
     return grid_entity;
 }
 

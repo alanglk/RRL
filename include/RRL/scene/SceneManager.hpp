@@ -1,4 +1,4 @@
-// RRL/include/scene/SceneManager.hpp
+//
 #pragma once
 
 #include "RRL/io/PrefabIO.hpp"

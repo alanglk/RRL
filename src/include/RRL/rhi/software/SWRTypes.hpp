@@ -28,8 +28,8 @@ struct SWRMesh {
     std::vector<swr_vec1> inv_w;    // If using perspective-correct interpolation | else default to affine interpolation
     #endif
 
-    // Defines material groups. 
-    std::vector<rrl::data::MeshMaterial> materials;
+    // Defines submesh groups. 
+    std::vector<rrl::data::MeshSubmesh> submeshes;
 };
 
 

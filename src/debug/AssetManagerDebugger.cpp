@@ -6,7 +6,7 @@
 
 #include "RRL/data/TextureComponents.hpp"
 #include "RRL/data/MeshComponents.hpp"
-#include "RRL/data/MaterialData.hpp"
+#include "RRL/data/MaterialComponents.hpp"
 
 #include "RRL/DebugMacros.hpp"
 
@@ -95,23 +95,6 @@ AssetDebugReport<MeshDebugStats, rrl::data::MeshID> GetMeshDebugReport(entt::reg
             stats.mesh_id = it->second;
             stats.entity_id = entity;
             stats.ref_count = GetRefCount(registry, entity);
-
-            // Resolve Material Links
-            const auto& source = view.get<rrl::data::MeshSourceComponent>(entity);
-            if (source.mesh) {
-                for (const auto& mat_link : source.mesh->materials) {
-                    auto mat_it = reverse_mat_cache.find(mat_link.material_entity);
-                    if (mat_it != reverse_mat_cache.end()) {
-
-                        // Avoid adding duplicates if multiple submeshes use the same material
-                        if (std::find(stats.material_links.begin(), stats.material_links.end(), mat_it->second) == stats.material_links.end()) {
-                            stats.material_links.push_back(mat_it->second);
-                        }
-                    } else {
-                        stats.material_links.push_back("UNKNOWN_LEAKED_MATERIAL");
-                    }
-                }
-            }
             report.tracked_assets[it->second] = stats;
         } else {
             report.leaked_assets.push_back(entity);
@@ -133,13 +116,13 @@ AssetDebugReport<MaterialDebugStats, rrl::data::MaterialID> GetMaterialDebugRepo
 
     // Dead links (in cache but not in RAM)
     for (const auto& [id, entity] : mat_cache) {
-        if (!registry.valid(entity) || !registry.all_of<rrl::data::MaterialData>(entity)) {
+        if (!registry.valid(entity) || !registry.all_of<rrl::data::MaterialSourceComponent>(entity)) {
             report.dead_assets.push_back(id);
         }
     }
 
     // Tracked and leaked assets
-    auto view = registry.view<rrl::data::MaterialData>();
+    auto view = registry.view<rrl::data::MaterialSourceComponent>();
     for (auto entity : view) {
         auto it = reverse_mat_cache.find(entity);
         if (it != reverse_mat_cache.end()) {
@@ -148,10 +131,11 @@ AssetDebugReport<MaterialDebugStats, rrl::data::MaterialID> GetMaterialDebugRepo
             stats.entity_id = entity;
             stats.ref_count = GetRefCount(registry, entity);
 
-            // Resolve Texture Links
-            const auto& data = view.get<rrl::data::MaterialData>(entity);
+            // Resolve Texture Links (Extracting inner data from the Source wrapper)
+            const auto& source = view.get<rrl::data::MaterialSourceComponent>(entity);
+            const auto& data = source.data;
+
             std::vector<entt::entity> tex_entities = { data.albedo_map, data.normal_map, data.metallic_roughness_map, data.emissive_map };
-            
             for (entt::entity tex_ent : tex_entities) {
                 if (tex_ent != entt::null) {
                     auto tex_it = reverse_tex_cache.find(tex_ent);

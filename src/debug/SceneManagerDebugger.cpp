@@ -4,6 +4,7 @@
 #include "RRL/scene/SceneCache.hpp"
 
 #include "RRL/DebugMacros.hpp"
+#include "RRL/scene/SceneManager.hpp"
 
 namespace rrl::debug::scene {
 
@@ -53,7 +54,7 @@ SceneDebugReport GetSceneDebugReport(entt::registry& registry) {
         const auto& instance = view.get<rrl::scene::PrefabInstanceComponent>(entity);
         
         // Extract the root blueprint ID (e.g., "city.car.wheel" -> "city")
-        std::string root_id = instance.path.substr(0, instance.path.find('.'));
+        rrl::scene::BlueprintID root_id = instance.path.substr(0, instance.path.find('.'));
 
         // Does this blueprint still exist in the cache?
         auto it = report.tracked_blueprints.find(root_id);

@@ -22,7 +22,7 @@
 
 
 // Helper Function to Create a 3D Cube
-rrl::data::MeshData CreateWireframeCube(float size, entt::entity material) {
+rrl::data::MeshData CreateWireframeCube(float size) {
     rrl::data::MeshData mesh;
     mesh.topology = rrl::data::MeshTopology::TRIANGLES;
     float h = size * 0.5f;
@@ -42,7 +42,7 @@ rrl::data::MeshData CreateWireframeCube(float size, entt::entity material) {
         3, 0, 4,  3, 4, 7  // Left face 
     };
 
-    mesh.materials.push_back({0, static_cast<uint32_t>(mesh.indices.size()), material});
+    mesh.submeshes = {{0, static_cast<uint32_t>(mesh.indices.size())}};
     return mesh;
 }
 
@@ -81,10 +81,10 @@ int main() {
     unlit_blue.base_color = glm::vec4(0.2f, 0.6f, 1.0f, 1.0f); 
     entt::entity cube_mat = rrl::data::CreateMaterial(registry, "blue_mat", unlit_blue);
 
-    entt::entity cube_asset = rrl::data::CreateMesh(registry, "cube_mesh", CreateWireframeCube(2.0f, cube_mat));
+    entt::entity cube_asset = rrl::data::CreateMesh(registry, "cube_mesh", CreateWireframeCube(2.0f));
     auto cube_obj = registry.create();
     rrl::tf::AddTransform(registry, cube_obj, glm::vec3(0.0f, 0.0f, 0.0f));
-    rrl::data::BindMesh(registry, cube_obj, cube_asset);
+    rrl::data::BindMesh(registry, cube_obj, cube_asset, {cube_mat});
 
     // 2D UI Object Creation
     rrl::data::ImageData ui_image;

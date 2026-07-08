@@ -214,22 +214,27 @@ static void RenderFrame(entt::registry& registry) {
             
             // Triangles and Lines Rasterization
             else if (!mesh.indices.empty()) {
-                std::vector<data::MeshMaterial> default_submesh;
-                const std::vector<data::MeshMaterial>* active_submeshes = &mesh.materials;
+                // Fallback if the geometry has no submesh groups defined
+                std::vector<data::MeshSubmesh> default_submesh = {{0, static_cast<uint32_t>(mesh.indices.size())}};
+                const std::vector<data::MeshSubmesh>& active_submeshes = mesh.submeshes.empty() ? default_submesh : mesh.submeshes;
 
-                if (mesh.materials.empty()) {
-                    default_submesh.push_back({0, static_cast<uint32_t>(mesh.indices.size()), entt::null});
-                    active_submeshes = &default_submesh;
-                }
-
-                for (const auto& submesh : *active_submeshes) {
+                for (size_t i = 0; i < active_submeshes.size(); ++i) {
+                    const auto& submesh = active_submeshes[i];
+                    
                     glm::vec4 mat_base_color(1.0f, 1.0f, 1.0f, 1.0f);
                     const data::ImageData* active_albedo = nullptr;
                     software::ColorFormatCache tex_format{};
                     
-                    if (registry.valid(submesh.material_entity) && registry.all_of<data::MaterialRuntimeComponent>(submesh.material_entity)) {
-                        // Material resolution
-                        const auto& mat_runtime = registry.get<data::MaterialRuntimeComponent>(submesh.material_entity);
+                    // Fetch the material from the linkage component
+                    entt::entity mat_entity = entt::null;
+                    if (i < linkage.materials.size()) {
+                        mat_entity = linkage.materials[i];
+                    }
+                    
+                    // Resolve the material properties and textures
+                    if (registry.valid(mat_entity) && registry.all_of<data::MaterialRuntimeComponent>(mat_entity)) {
+                        
+                        const auto& mat_runtime = registry.get<data::MaterialRuntimeComponent>(mat_entity);
                         
                         // Base material values
                         auto mat_it = ctx.materials.find(mat_runtime.handle);
@@ -245,7 +250,6 @@ static void RenderFrame(entt::registry& registry) {
                             }
                         }
                     }
-
                     software::SWRRender3DMesh(
                         render_target, depth_buffer, mesh, ctx.working_vertex_buffer,
                         submesh.index_offset, submesh.index_count, 

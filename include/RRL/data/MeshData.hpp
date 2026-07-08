@@ -21,15 +21,13 @@ enum class MeshTopology : uint8_t {
 
 
 /**
- * @brief Defines a sub-section of the mesh that uses a specific material.
+ * @brief Defines a sub-section of the mesh geometry.
+ *  These sections can be mapped to different materials. See 
+ *      rrl::data::BindMesh()
  */
-struct MeshMaterial {
+struct MeshSubmesh {
     uint32_t index_offset { 0 };
     uint32_t index_count { 0 };
-
-    // Links to an entity in the registry that holds a `MaterialData` component.
-    // If entt::null, the RHI will use a default fallback material.
-    entt::entity material_entity { entt::null };
 };
 
 
@@ -59,8 +57,8 @@ struct MeshData {
     std::vector<glm::vec4> bone_weights;
 
     
-    // Defines material groups. 
-    std::vector<MeshMaterial> materials;
+    // Defines submesh groups. 
+    std::vector<MeshSubmesh> submeshes;
 };
 
 

@@ -36,6 +36,9 @@ struct MeshRuntimeComponent {
  */
 struct MeshLinkage {
     entt::entity mesh_asset { entt::null };
+    
+    // Maps 1:1 with MeshData::submeshes (it specifies the material of each submesh)
+    std::vector<entt::entity> materials;
 
     // What layer does this physical object belong to?
     rhi::RenderLayer layer_mask { rhi::RenderLayer::LAYER_DEFAULT };

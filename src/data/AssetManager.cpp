@@ -52,6 +52,10 @@ static void OnTextureLinkageDestroyed(entt::registry& registry, entt::entity ent
 static void OnMeshLinkageDestroyed(entt::registry& registry, entt::entity entity) {
     auto& linkage = registry.get<MeshLinkage>(entity);
     DecrementAssetRef(registry, linkage.mesh_asset);
+    for (entt::entity mat : linkage.materials) {
+        if (!registry.valid(mat)) continue;
+        DecrementAssetRef(registry, mat);
+    }
 }
 static void OnMaterialSourceDestroyed(entt::registry& registry, entt::entity entity) {
     auto& mat = registry.get<MaterialSourceComponent>(entity).data;
@@ -60,15 +64,6 @@ static void OnMaterialSourceDestroyed(entt::registry& registry, entt::entity ent
     DecrementAssetRef(registry, mat.normal_map);
     DecrementAssetRef(registry, mat.metallic_roughness_map);
     DecrementAssetRef(registry, mat.emissive_map);
-}
-static void OnMeshSourceDestroyed(entt::registry& registry, entt::entity entity) {
-    auto& source = registry.get<MeshSourceComponent>(entity);
-    if (source.mesh) {
-        // Cascade dereference counting down to the textures
-        for (const auto& mat_link : source.mesh->materials) {
-            DecrementAssetRef(registry, mat_link.material_entity);
-        }
-    }
 }
 
 
@@ -85,8 +80,7 @@ void InitializeAssetManager(entt::registry& registry) {
     // Asset Garbage Collection
     registry.on_destroy<TextureLinkage>().connect<&OnTextureLinkageDestroyed>();
     registry.on_destroy<MeshLinkage>().connect<&OnMeshLinkageDestroyed>();
-    registry.on_destroy<MeshSourceComponent>().connect<&OnMeshSourceDestroyed>();
-    registry.on_destroy<MeshSourceComponent>().connect<&OnMeshSourceDestroyed>();
+    registry.on_destroy<MaterialSourceComponent>().connect<&OnMaterialSourceDestroyed>();
 }
 void SetAssetGCPolicy(entt::registry& registry, AssetGCPolicy policy) {
     RRL_ASSERT(registry.ctx().contains<AssetCache>(), "AssetManager not initialized!");
@@ -246,22 +240,12 @@ entt::entity CreateMesh(entt::registry& registry, const MeshID& mesh_id,MeshData
             LOG_WARN("CreateMesh: mesh '{}' already exists on cache. Overriding it", mesh_id);
             DestroyAsset(registry, cached_mesh);
         }
-
-        // cache out pre_linked materials (if any)
-        auto pre_linked_materials = mesh_data.materials;
-        mesh_data.materials.clear();
-
+        
         entt::entity mesh_entity = registry.create();
         auto& source = registry.emplace<MeshSourceComponent>(mesh_entity);
         source.mesh = std::make_shared<MeshData>(std::move(mesh_data)); // Move the geometry vectors
         source.version = 1;
         cache.meshes[mesh_id] = mesh_entity;
-
-        // Automatically link materials if available
-        for (const auto& mat_link : pre_linked_materials) {
-            BindMaterial(registry, mesh_entity, mat_link.material_entity, mat_link.index_offset, mat_link.index_count);
-        }
-
         return mesh_entity;
     }
     return entt::null;
@@ -271,46 +255,50 @@ void UpdateMesh(entt::registry& registry, entt::entity mesh_asset, MeshData&& me
     if (mesh_asset == entt::null) return;
     RRL_ASSERT(registry.valid(mesh_asset), "UpdateMesh: Invalid mesh asset entity!");
     RRL_ASSERT(registry.all_of<MeshSourceComponent>(mesh_asset), "UpdateMesh: Entity lacks a MeshSourceComponent!");
-    
-    // Isolate incoming materials
-    auto pre_linked_materials = mesh_data.materials;
-    mesh_data.materials.clear();
 
     auto& source = registry.get<MeshSourceComponent>(mesh_asset);
-
-    // Wipe old GC linkages
-    if (source.mesh) {
-        for (const auto& mat_link : source.mesh->materials) {
-            DecrementAssetRef(registry, mat_link.material_entity);
-        }
-    }
-
     source.mesh = std::make_shared<MeshData>(std::move(mesh_data));
     source.version.fetch_add(1, std::memory_order_release);
-
-    // Bind new materials
-    for (const auto& mat_link : pre_linked_materials) {
-        BindMaterial(registry, mesh_asset, mat_link.material_entity, mat_link.index_offset, mat_link.index_count);
-    }
 }
-void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity mesh_asset, rhi::RenderLayer layer) {
+void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity mesh_asset, const std::vector<entt::entity>& materials, rhi::RenderLayer layer) {
     RRL_ASSERT(registry.valid(world_object), "BindMesh: Invalid world object entity!");
-    if (mesh_asset != entt::null) {
-        RRL_ASSERT(registry.valid(mesh_asset), "BindMesh: Invalid mesh asset entity!");
-        RRL_ASSERT(registry.all_of<MeshSourceComponent>(mesh_asset), "BindMesh: Asset lacks a MeshSourceComponent!");
+    std::vector<entt::entity> resolved_materials = materials;
+
+    // Resolve submesh materials
+    if (mesh_asset != entt::null && registry.valid(mesh_asset) && registry.all_of<MeshSourceComponent>(mesh_asset)) {
+        auto& source = registry.get<MeshSourceComponent>(mesh_asset);
+        if (source.mesh) {
+            size_t required_count = source.mesh->submeshes.empty() ? 1 : source.mesh->submeshes.size();
+            size_t provided_count = resolved_materials.size();
+
+            // Perfect match!. Do nothing.
+            if (provided_count == required_count) {
+            } 
+            // Broadcast the single material to all slots
+            else if (provided_count == 1 && required_count > 1) {
+                resolved_materials.resize(required_count, resolved_materials[0]);
+            } 
+            // Mismatch. Either 0 materials provided, or a weird number like 2 materials for 5 submeshes
+            else {
+                if (provided_count > 0) {
+                    LOG_WARN("BindMesh: Mesh has {} submeshes but {} materials were provided. Padding with nulls / truncating.", required_count, provided_count);
+                }
+                resolved_materials.resize(required_count, entt::null);
+            }
+        }
     }
-    
+
     // Safely swap reference counts if overwriting an existing linkage
     if (auto* old_link = registry.try_get<MeshLinkage>(world_object)) {
-        if (old_link->mesh_asset != mesh_asset) {
-            DecrementAssetRef(registry, old_link->mesh_asset);
-            IncrementAssetRef(registry, mesh_asset);
-        }
-    } else {
-        IncrementAssetRef(registry, mesh_asset);
+        DecrementAssetRef(registry, old_link->mesh_asset);
+        for (entt::entity mat : old_link->materials) DecrementAssetRef(registry, mat);
+    }
+    if (mesh_asset != entt::null) IncrementAssetRef(registry, mesh_asset);
+    for (entt::entity mat : resolved_materials) {
+        if (mat != entt::null) IncrementAssetRef(registry, mat);
     }
     
-    registry.emplace_or_replace<MeshLinkage>(world_object, mesh_asset, layer);
+    registry.emplace_or_replace<MeshLinkage>(world_object, mesh_asset, resolved_materials, layer);
 }
 void SetMeshLayer(entt::registry& registry, entt::entity world_object, rhi::RenderLayer layer) {
     RRL_ASSERT(registry.valid(world_object), "SetMeshLayer: Invalid world object entity!");
@@ -392,40 +380,6 @@ void UpdateMaterial(entt::registry& registry, entt::entity material_asset, const
     if (old_mat.metallic_roughness_map != mat_data.metallic_roughness_map) BindMaterialTexture(registry, material_asset, mat_data.metallic_roughness_map, MaterialTextureType::METALLIC_ROUGHNESS_MAP);
     if (old_mat.emissive_map != mat_data.emissive_map) BindMaterialTexture(registry, material_asset, mat_data.emissive_map, MaterialTextureType::EMISSIVE_MAP);
 }
-void BindMaterial(entt::registry& registry, entt::entity mesh_asset, entt::entity material_asset, 
-                  uint32_t index_offset, uint32_t index_count) {
-    RRL_ASSERT(registry.valid(mesh_asset), "BindMaterial: Invalid mesh asset!");
-    RRL_ASSERT(registry.all_of<MeshSourceComponent>(mesh_asset), "BindMaterial: Lacks MeshSourceComponent!");
-    RRL_ASSERT(registry.valid(material_asset), "BindMaterial: Invalid material asset!");
-    RRL_ASSERT(registry.all_of<MaterialSourceComponent>(material_asset), "BindMaterial: Lacks MaterialSourceComponent!");
-
-    auto& source = registry.get<MeshSourceComponent>(mesh_asset);
-    if (!source.mesh) return;
-
-    uint32_t count = (index_count == 0) ? static_cast<uint32_t>(source.mesh->indices.size()) : index_count;
-
-    bool replaced = false;
-    for (auto& mat_link : source.mesh->materials) {
-        if (mat_link.index_offset == index_offset && mat_link.index_count == count) {
-            if (mat_link.material_entity != material_asset) {
-                DecrementAssetRef(registry, mat_link.material_entity); 
-                IncrementAssetRef(registry, material_asset);           
-                mat_link.material_entity = material_asset;             
-            }
-            replaced = true;
-            break;
-        }
-    }
-
-    if (!replaced) {
-        IncrementAssetRef(registry, material_asset);
-        source.mesh->materials.push_back({index_offset, count, material_asset});
-    }
-
-    // Update the version so the RHI knows a texture was swapped!
-    source.version.fetch_add(1, std::memory_order_release);
-}
-
 void BindMaterialTexture(entt::registry& registry, entt::entity material_asset, entt::entity texture_asset, 
                  MaterialTextureType texture_type) {
     RRL_ASSERT(registry.valid(material_asset), "BindMaterialTexture: Invalid material asset!");
