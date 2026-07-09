@@ -51,7 +51,7 @@ option(RRL_BUILD_WINDOW_OPENCV      "Build the OpenCV Window presentation layer"
 # Building GLFW windowing without OpenGL backend is not supported.
 # option(RRL_BUILD_WINDOW_GLFW      "Build the GLFW Window presentation layer" OFF) 
 
-option(RRL_OPENGL_EMBED_SHADERS     "Bake OpenGL shaders into the binary instead of loading from disk (on release mode we cant disable this)" ON)
+option(RRL_OPENGL_EMBED_SHADERS "Bake OpenGL shaders into the binary instead of loading from disk" OFF)
 
 
 # --- Native ARCH -------------------------------------------------
@@ -65,7 +65,6 @@ if(RRL_ENABLE_NATIVE_ARCH)
         # add_compile_options(/arch:AVX2) 
     endif()
 endif()
-
 
 
 # --- Installation Variables --------------------------------------
@@ -95,6 +94,27 @@ set(RRL_PRIVATE_COMPILE_DEFS )      # e.g. ENABLE_TESTING compile definition to 
 if(RRL_SHARED)
     set(RRL_TYPE SHARED)
 endif()
+
+
+# --- Git Versioning ----------------------------------------------
+set(RRL_GIT_HASH "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE RRL_GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+endif()
+message(STATUS "RRL: Configuring build for version ${PROJECT_VERSION} (Git: ${RRL_GIT_HASH})")
+list(APPEND RRL_PUBLIC_COMPILE_DEFS
+    RRL_VERSION="${PROJECT_VERSION}"
+    RRL_GIT_HASH="${RRL_GIT_HASH}"
+    FLOG_APP_VERSION="${PROJECT_VERSION}"
+    FLOG_APP_GIT_HASH="${RRL_GIT_HASH}"
+)
 
 
 # --- Library Sources ---------------------------------------------
@@ -160,7 +180,7 @@ if(EXISTS "${FL_DIR}/CMakeLists.txt")
     endif()
     set(FLOGGING_F_PREFIX OFF CACHE BOOL "Disable F_ prefix for parent project" FORCE)
     set(FLOGGING_QUILL_BACKEND ON CACHE BOOL "Force Quill backend for FLogging" FORCE)
-    add_subdirectory(${FL_DIR} "${CMAKE_CURRENT_BINARY_DIR}/FLogging" EXCLUDE_FROM_ALL)
+    add_subdirectory(${FL_DIR} "${CMAKE_CURRENT_BINARY_DIR}/FLogging")
     list(APPEND RRL_PUBLIC_LIBRARIES FLogging::flogging)
 else()
     message(FATAL_ERROR "FLogging source missing at ${FL_DIR}. Have you called 'git submodule update --init --recursive'?")
@@ -285,17 +305,20 @@ if (RRL_BUILD_WINDOW_GLFW AND RRL_BUILD_BACKEND_OPENGL)
     )
     
     # Shader configuration
-    if (CMAKE_BUILD_TYPE STREQUAL "Debug" AND RRL_OPENGL_EMBED_SHADERS)
-        set(RRL_OPENGL_EMBED_SHADERS OFF)
-    endif()
-
     if (RRL_OPENGL_EMBED_SHADERS)
-            list(APPEND RRL_PRIVATE_COMPILE_DEFS RRL_OPENGL_EMBED_SHADERS)
+        message(STATUS "RRL [Hardware RHI]: Compiling with embedded shaders.")
+        list(APPEND RRL_PRIVATE_COMPILE_DEFS RRL_OPENGL_EMBED_SHADERS)
+    else()
+        message(STATUS "RRL [Hardware RHI]: Compiling with external runtime shaders.")
+        if(CMAKE_BUILD_TYPE STREQUAL "Release")
+            set(SHADER_BAKE_PATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/RRL/shaders")
         else()
-            # This has to be install error prone!!
-            list(APPEND RRL_PRIVATE_COMPILE_DEFS 
-                RRL_OPENGL_RUNTIME_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/rhi/opengl/shaders"
-            )
+            set(SHADER_BAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src/rhi/opengl/shaders")
+        endif()
+
+        list(APPEND RRL_PRIVATE_COMPILE_DEFS 
+            RRL_OPENGL_RUNTIME_SHADER_DIR="${SHADER_BAKE_PATH}"
+        )
     endif()
 endif()
 
@@ -371,42 +394,103 @@ endif()
 
 
 # --- Install -----------------------------------------------------
+include(GNUInstallDirs)
+
+# Install Core Targets
 install(
   TARGETS rrl
   EXPORT RRLTargets
-  RUNTIME DESTINATION bin
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib
-  INCLUDES DESTINATION include
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
+# Install Public Headers
 install(
   DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-  DESTINATION include
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 install(
   DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/
-  DESTINATION include
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
+
+# Install Shaders (if not embedded)
+if(RRL_BUILD_BACKEND_OPENGL AND NOT RRL_OPENGL_EMBED_SHADERS)
+    install(
+        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/rhi/opengl/shaders/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/RRL/shaders
+    )
+endif()
 
 # Export CMake targets
 install(
   EXPORT RRLTargets 
   FILE  RRLTargets.cmake
-  NAMESPACE  RRL::
-  DESTINATION lib/cmake/RRL
+  NAMESPACE RRL::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RRL
 )
 
-# Generate Config file
+# Generate Config and Version files
 include(CMakePackageConfigHelpers)
-file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/RRLConfig.cmake "
-include(CMakeFindDependencyMacro)
-find_dependency(Threads)
-include(\"\${CMAKE_CURRENT_LIST_DIR}/RRLTargets.cmake\")
-")
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/RRLConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+# Add a package CMake configuration file. 
+#   This is useful for user-calls like: find_package(RRL REQUIRED)
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RRLConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/RRLConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RRL
+)
+
 install(
-    FILES ${CMAKE_CURRENT_BINARY_DIR}/RRLConfig.cmake
-    DESTINATION lib/cmake/RRL
+    FILES 
+        "${CMAKE_CURRENT_BINARY_DIR}/RRLConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/RRLConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RRL
 )
 
 
+
+# --- Packaging (CPack) -------------------------------------------
+if(RRL_IS_MASTER_PROJECT)
+    set(CPACK_PACKAGE_NAME "RRL")
+    set(CPACK_PACKAGE_VENDOR "alanglk")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Robotics Rendering Library (RRL)")
+    
+    set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+    set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+    set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+    
+    # Exclude files (safe guard, this should not be necessary)
+    set(CPACK_SOURCE_IGNORE_FILES "/\\.git/;/build/;/third_party/;/.DS_Store/;/benchmarks/;/test/;/examples/")
+
+    # OS Specific Generator Configuration
+    if(WIN32)
+        # Windows: Generates a .zip and a .msi installer
+        set(CPACK_GENERATOR "ZIP;NSIS")
+        set(CPACK_NSIS_MODIFY_PATH ON) 
+
+    elseif(APPLE)
+        # macOS: Generates a .tar.gz and a .dmg installer
+        set(CPACK_GENERATOR "TGZ;DragNDrop")
+        
+    elseif(UNIX)
+        # Linux: Generates a .tar.gz, a Debian (.deb), and a Red Hat (.rpm) installer
+        set(CPACK_GENERATOR "TGZ;DEB;RPM")
+        
+        # Debian dependencies
+        set(CPACK_DEBIAN_PACKAGE_MAINTAINER "alanglk")
+        set(CPACK_DEBIAN_PACKAGE_DEPENDS "libglfw3-dev")
+        
+        # Red Hat dependencies
+        set(CPACK_RPM_PACKAGE_REQUIRES "glfw-devel")
+    endif()
+
+    include(CPack)
+endif()

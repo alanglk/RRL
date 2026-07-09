@@ -17,7 +17,8 @@
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
         "RRL_BUILD_SWR_SIMD_BACKEND": "ON",
         "RRL_BUILD_BACKEND_OPENGL": "ON",
-        "RRL_BUILD_WINDOW_OPENCV": "ON"
+        "RRL_BUILD_WINDOW_OPENCV": "ON",
+        "RRL_OPENGL_EMBED_SHADERS": "OFF"
       }
     },
     {
@@ -30,8 +31,7 @@
         "RRL_TESTING": "ON",
         "RRL_EXAMPLES": "ON",
         "RRL_BENCHMARKS": "OFF",
-        "RRL_SHARED": "OFF",
-        "RRL_OPENGL_EMBED_SHADERS": "OFF"
+        "RRL_SHARED": "OFF"
       }
     },
     {
@@ -71,8 +71,7 @@
         "RRL_TESTING": "OFF",
         "RRL_EXAMPLES": "OFF",
         "RRL_BENCHMARKS": "OFF",
-        "RRL_SHARED": "ON",
-        "RRL_INSTALL": "ON"
+        "RRL_SHARED": "ON"
       }
     }
   ],
