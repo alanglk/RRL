@@ -48,6 +48,14 @@ enum class ImageColorLayout : uint8_t {
     HSV     = 6  // HSV color space (hue, saturation, value)
 };
 
+/**
+ * @brief Defines the algorithm for texture upsacling and downscaling.
+ */
+enum class ImageFilter {
+    LINEAR,
+    NEAREST
+};
+
 
 /**
  * @brief Image data container. Holds metadata and a raw contiguous byte payload.
@@ -59,6 +67,7 @@ struct ImageData {
     ImageDataType data_type         { ImageDataType::FLOAT32 };     // Image payload data type
     ImageColorLayout color_layout   { ImageColorLayout::NONE };     // Image color space layout (defines the stride)
     ImageOrigin origin              { ImageOrigin::TOP_LEFT };      // where does the data start from?
+    ImageFilter filter              { ImageFilter::LINEAR };        // How to sample / scale the image
     
     
     // Image raw data blob container

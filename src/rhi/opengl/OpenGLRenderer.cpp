@@ -503,8 +503,9 @@ static TextureHandle CreateTexture(entt::registry& registry, const data::ImageDa
     glTextureStorage2D(tex.id, 1, gl_internal_format, tex.width, tex.height);
     
     // Filtering for general 3D assets (can be bypassed for pure pixel-perfect UI later)
-    glTextureParameteri(tex.id, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTextureParameteri(tex.id, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    GLint gl_filter = (image_data.filter == data::ImageFilter::NEAREST) ? GL_NEAREST : GL_LINEAR;
+    glTextureParameteri(tex.id, GL_TEXTURE_MIN_FILTER, gl_filter);
+    glTextureParameteri(tex.id, GL_TEXTURE_MAG_FILTER, gl_filter);
     glTextureParameteri(tex.id, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTextureParameteri(tex.id, GL_TEXTURE_WRAP_T, GL_REPEAT);
 

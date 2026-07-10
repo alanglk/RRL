@@ -156,9 +156,7 @@ set(ENTT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/entt")
 if(EXISTS "${ENTT_DIR}/CMakeLists.txt")
     set(ENTT_INSTALL OFF CACHE BOOL "" FORCE) # Prevents EnTT overrides on install variables
     add_subdirectory(${ENTT_DIR} "${CMAKE_CURRENT_BINARY_DIR}/entt" EXCLUDE_FROM_ALL)
-    # list(APPEND RRL_PUBLIC_LIBRARIES $<INSTALL_INTERFACE:EnTT::EnTT> )
-    # list(APPEND RRL_PRIVATE_LIBRARIES $<BUILD_INTERFACE:EnTT::EnTT> )
-    list(APPEND RRL_PUBLIC_LIBRARIES $<BUILD_INTERFACE:EnTT::EnTT> $<INSTALL_INTERFACE:EnTT::EnTT>)
+    list(APPEND RRL_PUBLIC_LIBRARIES $<BUILD_INTERFACE:EnTT::EnTT>)
 else()
     message(FATAL_ERROR "EnTT source missing at ${ENTT_DIR}. Have you called 'git submodule update --init --recursive'?")
 endif()
@@ -168,9 +166,7 @@ set(GLM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/glm")
 if(EXISTS "${GLM_DIR}/CMakeLists.txt")
     set(GLM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     add_subdirectory(${GLM_DIR} "${CMAKE_CURRENT_BINARY_DIR}/glm" EXCLUDE_FROM_ALL)
-    # list(APPEND RRL_PUBLIC_LIBRARIES $<INSTALL_INTERFACE:glm::glm> )
-    # list(APPEND RRL_PRIVATE_LIBRARIES $<BUILD_INTERFACE:glm::glm-header-only> )
-    list(APPEND RRL_PUBLIC_LIBRARIES $<BUILD_INTERFACE:glm::glm-header-only> $<INSTALL_INTERFACE:glm::glm>)
+    list(APPEND RRL_PUBLIC_LIBRARIES $<BUILD_INTERFACE:glm::glm-header-only>)
     list(APPEND RRL_PUBLIC_COMPILE_DEFS GLM_ENABLE_EXPERIMENTAL)
 else()
     message(FATAL_ERROR "GLM source missing at ${GLM_DIR}. Have you called 'git submodule update --init --recursive'?")
@@ -410,15 +406,25 @@ install(
   INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-# Install Public Headers
-install(
-  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-install(
-  DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
+# Install GLFW (if STATIC and enabled)
+if(NOT RRL_SHARED)
+    if(RRL_BUILD_WINDOW_GLFW)
+        install(
+            TARGETS glfw
+            EXPORT RRLTargets
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        )
+    endif()
+endif()
+
+# Install Public Headers (RRL)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+# Install Public Dependency Headers (EnTT & GLM)
+install(DIRECTORY "${ENTT_DIR}/src/entt" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY "${GLM_DIR}/glm" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h" PATTERN "*.inl")
 
 # Install Shaders (if not embedded)
 if(RRL_BUILD_BACKEND_OPENGL AND NOT RRL_OPENGL_EMBED_SHADERS)
@@ -427,6 +433,7 @@ if(RRL_BUILD_BACKEND_OPENGL AND NOT RRL_OPENGL_EMBED_SHADERS)
         DESTINATION ${CMAKE_INSTALL_DATADIR}/RRL/shaders
     )
 endif()
+
 
 # Export CMake targets
 install(
