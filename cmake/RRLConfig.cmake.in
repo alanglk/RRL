@@ -3,7 +3,7 @@
 include(CMakeFindDependencyMacro)
 
 # GLM, EnTT and FLogging are required as a PUBLIC dependencies
-find_dependency(FLogging @PROJECT_VERSION@ EXACT)
+find_dependency(FLogging 1.0.0 EXACT)
 find_dependency(EnTT 3.16.0 EXACT)
 find_dependency(glm 1.0.3)
 
