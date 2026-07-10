@@ -33,7 +33,7 @@ data::MeshData CreateProceduralCone(float radius, float height) {
     // Base circle
     int segments = 12;
     for (int i = 0; i < segments; ++i) {
-        float theta = (2.0f * M_PI * i) / segments;
+        float theta = -(2.0f * M_PI * i) / segments;
         mesh.positions.push_back({radius * std::cos(theta), radius * std::sin(theta), 0.0f});
     }
 

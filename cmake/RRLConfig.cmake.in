@@ -2,12 +2,14 @@
 
 include(CMakeFindDependencyMacro)
 
-# Search for dependencies only if RRL is built as a static library
-if(NOT @RRL_SHARED@)
+# GLM, EnTT and FLogging are required as a PUBLIC dependencies
+find_dependency(FLogging @PROJECT_VERSION@ EXACT)
+find_dependency(EnTT 3.16.0 EXACT)
+find_dependency(glm 1.0.3)
 
-    # User is expected to provide EnTT, GLM and GLFW3
-    find_dependency(EnTT) 
-    find_dependency(glm)
+# GLFW is hidden inside RRL's .so file. The user only needs to find it
+# if they are linking against RRL as a STATIC library.
+if(NOT @RRL_SHARED@)
     if(@RRL_BUILD_WINDOW_GLFW@)
         find_dependency(glfw3)
     endif()

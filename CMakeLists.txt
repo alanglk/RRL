@@ -167,7 +167,7 @@ if(EXISTS "${GLM_DIR}/CMakeLists.txt")
     set(GLM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     add_subdirectory(${GLM_DIR} "${CMAKE_CURRENT_BINARY_DIR}/glm" EXCLUDE_FROM_ALL)
     list(APPEND RRL_PUBLIC_LIBRARIES $<BUILD_INTERFACE:glm::glm-header-only> )
-    list(APPEND RRL_PRIVATE_COMPILE_DEFS GLM_ENABLE_EXPERIMENTAL)
+    list(APPEND RRL_PUBLIC_COMPILE_DEFS GLM_ENABLE_EXPERIMENTAL)
 else()
     message(FATAL_ERROR "GLM source missing at ${GLM_DIR}. Have you called 'git submodule update --init --recursive'?")
 endif()
@@ -468,7 +468,7 @@ if(RRL_IS_MASTER_PROJECT)
     set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
     
     # Exclude files (safe guard, this should not be necessary)
-    set(CPACK_SOURCE_IGNORE_FILES "/\\.git/;/build/;/third_party/;/.DS_Store/;/benchmarks/;/test/;/examples/")
+    set(CPACK_SOURCE_IGNORE_FILES ".git/;/build/;/third_party/;.DS_Store/;/benchmarks/;/test/;/examples/")
 
     # OS Specific Generator Configuration
     if(WIN32)
