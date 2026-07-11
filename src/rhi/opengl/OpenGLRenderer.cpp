@@ -305,7 +305,7 @@ static void RenderFrame(entt::registry& registry) {
             const auto& world_tf = mesh_view.get<tf::TFWorldTransformComponent>(physical_entity);
             
             if (!registry.valid(linkage.mesh_asset) || !registry.all_of<data::MeshRuntimeComponent>(linkage.mesh_asset)) continue;
-            if ((cam.culling_mask & linkage.layer_mask) == rhi::RenderLayer::LAYER_NONE) continue;
+            if ((cam.culling_mask & linkage.layer_mask) == rhi::RHIRenderLayer::LAYER_NONE) continue;
 
             MeshHandle mesh_handle = registry.get<data::MeshRuntimeComponent>(linkage.mesh_asset).handle;
             if (ctx.meshes.find(mesh_handle) == ctx.meshes.end()) continue;
@@ -389,7 +389,7 @@ static void RenderFrame(entt::registry& registry) {
             const auto& linkage = ui_view.get<data::TextureLinkage>(ui_entity);
             
             if (!registry.valid(linkage.texture_asset) || !registry.all_of<data::TextureRuntimeComponent>(linkage.texture_asset)) continue;
-            if ((linkage.layer_mask & rhi::RenderLayer::LAYER_UI) == rhi::RenderLayer::LAYER_NONE) continue;
+            if ((linkage.layer_mask & rhi::RHIRenderLayer::LAYER_UI) == rhi::RHIRenderLayer::LAYER_NONE) continue;
             
             rhi::TextureHandle tex_handle = registry.get<data::TextureRuntimeComponent>(linkage.texture_asset).handle;
             auto tex_it = ctx.textures.find(tex_handle);

@@ -1,8 +1,6 @@
 // RRL/src/include/RRL/data/MaterialComponents.hpp
 #pragma once
 
-#include "RRL/data/MaterialData.hpp"
-
 #include "RRL/rhi/RHIBackend.hpp"
 #include <atomic>
 

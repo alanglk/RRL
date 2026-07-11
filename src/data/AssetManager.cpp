@@ -1,5 +1,7 @@
 // RRL/src/data/AssetManager.hpp
 
+#include <entt/entt.hpp>
+
 #include "RRL/data/AssetManager.hpp"
 #include "RRL/data/AssetCache.hpp"
 #include "RRL/data/AssetReferenceCounter.hpp"
@@ -10,13 +12,11 @@
 #include "RRL/data/MaterialComponents.hpp"
 
 
-#include "RRL/rhi/RHIAPI.hpp"
+#include "RRL/rhi/RHI_Internal.hpp"
 
 
 #include "RRL/DebugMacros.hpp"
 #include <FLogging/FLogging.hpp>
-
-#include "entt/entity/entity.hpp"
 
 
 namespace rrl::data {
@@ -260,7 +260,7 @@ void UpdateMesh(entt::registry& registry, entt::entity mesh_asset, MeshData&& me
     source.mesh = std::make_shared<MeshData>(std::move(mesh_data));
     source.version.fetch_add(1, std::memory_order_release);
 }
-void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity mesh_asset, const std::vector<entt::entity>& materials, rhi::RenderLayer layer) {
+void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity mesh_asset, const std::vector<entt::entity>& materials, rhi::RHIRenderLayer layer) {
     RRL_ASSERT(registry.valid(world_object), "BindMesh: Invalid world object entity!");
     std::vector<entt::entity> resolved_materials = materials;
 
@@ -300,7 +300,7 @@ void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity 
     
     registry.emplace_or_replace<MeshLinkage>(world_object, mesh_asset, resolved_materials, layer);
 }
-void SetMeshLayer(entt::registry& registry, entt::entity world_object, rhi::RenderLayer layer) {
+void SetMeshLayer(entt::registry& registry, entt::entity world_object, rhi::RHIRenderLayer layer) {
     RRL_ASSERT(registry.valid(world_object), "SetMeshLayer: Invalid world object entity!");
     RRL_ASSERT_HAS_COMPONENT(registry, world_object, MeshLinkage, "SetMeshLayer: Provided world object has not a MeshLinkage. Have you called BindMesh()?");
     if (auto* link = registry.try_get<MeshLinkage>(world_object)) {
@@ -416,7 +416,7 @@ void BindMaterialTexture(entt::registry& registry, entt::entity material_asset, 
 // --- UI Assets ---------------------------------------------------
 void BindUITexture(entt::registry& registry, entt::entity ui_object, entt::entity texture_asset,
                    float screen_x, float screen_y, float screen_w, float screen_h,
-                   rhi::RenderLayer layer 
+                   rhi::RHIRenderLayer layer 
 ) {
     RRL_ASSERT(registry.valid(ui_object), "BindUITexture: Invalid UI object!");
     if (texture_asset != entt::null) {
@@ -439,7 +439,7 @@ void BindUITexture(entt::registry& registry, entt::entity ui_object, entt::entit
 void UpdateUILayout(entt::registry& registry, entt::entity ui_object, 
                     float screen_x, float screen_y, 
                     float screen_w, float screen_h, 
-                    rhi::RenderLayer layer 
+                    rhi::RHIRenderLayer layer 
 ){
     RRL_ASSERT(registry.valid(ui_object), "UpdateUILayout: Invalid UI object!");
     RRL_ASSERT(registry.all_of<TextureLinkage>(ui_object), "UpdateUILayout: Lacks TextureLinkage!");

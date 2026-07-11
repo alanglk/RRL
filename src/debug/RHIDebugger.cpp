@@ -3,7 +3,6 @@
 #include "RRL/debug/RHIDebugger.hpp"
 
 #include "RRL/rhi/RHIBackend.hpp"
-#include "RRL/rhi/RHILayers.hpp"
 #include "RRL/rhi/RHIBackendManager.hpp"
 
 #include "RRL/tf/TransformTree.hpp"
@@ -108,7 +107,7 @@ entt::entity SpawnCameraFrustum(entt::registry& registry, entt::entity camera_en
     tf::AttachChild(registry, camera_entity, frustum_entity, tf::TFDependencyPolicy::CASCADE_DELETE);
     
     // Bind to the debug layer
-    data::BindMesh(registry, frustum_entity, mesh_asset, { debug_mat }, rrl::rhi::RenderLayer::LAYER_DEBUG);
+    data::BindMesh(registry, frustum_entity, mesh_asset, { debug_mat }, rrl::rhi::RHIRenderLayer::LAYER_DEBUG);
     return frustum_entity;
 }
 entt::entity SpawnDebugGrid(entt::registry& registry, float size, int subdivisions) {
@@ -142,7 +141,7 @@ entt::entity SpawnDebugGrid(entt::registry& registry, float size, int subdivisio
     tf::AddTransform(registry, grid_entity);
     
     // Bind to the debug layer
-    data::BindMesh(registry, grid_entity, mesh_asset, { debug_mat }, rrl::rhi::RenderLayer::LAYER_DEBUG);
+    data::BindMesh(registry, grid_entity, mesh_asset, { debug_mat }, rrl::rhi::RHIRenderLayer::LAYER_DEBUG);
     return grid_entity;
 }
 

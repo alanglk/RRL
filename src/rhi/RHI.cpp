@@ -1,7 +1,7 @@
-// RRL/src/rhi/RHIAPI.cpp
+// RRL/src/rhi/RHI.cpp
 
-#include "RRL/rhi/RHIAPI.hpp"
-#include "RRL/rhi/RHIBackend.hpp"
+#include "RRL/rhi/RHI.hpp"
+#include "RRL/rhi/RHI_Internal.hpp"
 #include "RRL/rhi/RHIBackendManager.hpp"
 
 #include "RRL/data/SynchronizationSystems.hpp"
@@ -192,7 +192,10 @@ void SyncResources(entt::registry& registry) {
 void RenderFrame(entt::registry& registry) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
     RRL_ASSERT(backend.RenderFrame != nullptr, "RHI RenderFrame called but no backend is loaded!");
+
+    SyncResources(registry);
     backend.RenderFrame(registry);
+    Present(registry);
 }
 
 

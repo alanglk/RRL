@@ -15,7 +15,7 @@
 
 // Visualization
 #include <RRL/data/AssetManager.hpp>
-#include <RRL/rhi/RHIAPI.hpp>
+#include <RRL/rhi/RHI.hpp>
 
 // Logging
 #include <FLogging/FLogging.hpp>
@@ -216,9 +216,7 @@ public:
         }
         rrl::data::UpdateTexture(registry, board_tex, std::move(frame));
         
-        rrl::rhi::SyncResources(registry);
         rrl::rhi::RenderFrame(registry);
-        rrl::rhi::Present(registry);
         rrl::rhi::PollWindowEvents(main_window); 
     }
     

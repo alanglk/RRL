@@ -16,7 +16,7 @@
 #include "RRL/data/AssetManager.hpp"
 #include "RRL/data/ImageData.hpp"
 #include "RRL/camera/CameraSystem.hpp"
-#include "RRL/rhi/RHIAPI.hpp"
+#include "RRL/rhi/RHI.hpp"
 
 using namespace rrl;
 
@@ -152,9 +152,7 @@ int main() {
             }
         }
 
-        rhi::SyncResources(registry);
-        rhi::RenderFrame(registry);
-        rhi::Present(registry);
+        rrl::rhi::RenderFrame(registry);
         rrl::rhi::PollWindowEvents(main_window); 
 
         // Metrics output loop

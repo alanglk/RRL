@@ -4,7 +4,6 @@
 #include "RRL/camera/CameraConventions.hpp"
 #include "RRL/camera/CameraModels.hpp"
 
-#include "RRL/rhi/RHILayers.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
 
 
@@ -26,7 +25,7 @@ struct CameraComponent {
     
     
     // What layers can this camera see?
-    rhi::RenderLayer culling_mask { rhi::RenderLayer::LAYER_ALL };
+    rhi::RHIRenderLayer culling_mask { rhi::RHIRenderLayer::LAYER_ALL };
 };
 
 

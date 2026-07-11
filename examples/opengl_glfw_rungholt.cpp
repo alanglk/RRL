@@ -8,7 +8,7 @@
 
 
 
-#include "RRL/rhi/RHIAPI.hpp"
+#include "RRL/rhi/RHI.hpp"
 #include "RRL/debug/RHIDebugger.hpp"
 
 #include "RRL/data/AssetManager.hpp"
@@ -80,9 +80,7 @@ int main() {
         rrl::tf::UpdateTransformTree(registry);
         rrl::camera::UpdateCameras(registry, rrl::camera::NDC_OPENGL); 
 
-        rrl::rhi::SyncResources(registry);
         rrl::rhi::RenderFrame(registry);
-        rrl::rhi::Present(registry);
         rrl::rhi::PollWindowEvents(main_window); 
     }
 

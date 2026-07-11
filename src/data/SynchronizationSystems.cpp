@@ -7,7 +7,7 @@
 #include "RRL/data/MaterialData.hpp"
 #include "RRL/data/MaterialComponents.hpp"
 
-#include "RRL/rhi/RHIAPI.hpp"
+#include "RRL/rhi/RHI_Internal.hpp"
 
 #include <cstdint>
 

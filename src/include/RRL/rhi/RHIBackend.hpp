@@ -1,22 +1,13 @@
-// RRL/include/rhi/RHIBackend.hpp
+// RRL/src/include/rhi/RHIBackend.hpp
 #pragma once
 
-#include <entt/entt.hpp>
 
-#include "RRL/data/ImageData.hpp"
+#include "RRL/rhi/RHI.hpp"
 #include "RRL/data/MeshData.hpp"
 #include "RRL/data/MaterialData.hpp"
 
-#include <cstdint>
-#include <string>
-
 
 namespace rrl::rhi {
-
-// RHI rendering target ID (enable off-screen rendering support)
-using RenderTargetHandle = uint32_t;
-constexpr RenderTargetHandle TARGET_MAIN = 0;           // Handle 0 is reserved for the Screen / Main Target
-constexpr RenderTargetHandle TARGET_NULL = 0xFFFFFFFF;  // Null handle
 
 // RHI texture handling (loaded/allocated textures)
 using TextureHandle = uint32_t;
@@ -29,50 +20,6 @@ constexpr MeshHandle MESH_NULL = 0xFFFFFFFF;  // Null handle
 // RHI material handling (UBO tracking)
 using MaterialHandle = uint32_t;
 constexpr MaterialHandle MATERIAL_NULL = 0xFFFFFFFF;  // Null handle
-
-
-/**
- * @brief Runtime flags for the RHI to toggle debug rendering features.
- */
-enum class RHIDebugFlag : uint32_t {
-    FLAG_NONE                   = 0,
-    FLAG_DRAW_WIREFRAMES        = 1 << 0,   // Render meshes as wireframes (except point topology)
-    FLAG_DISABLE_TEXTURES       = 1 << 1,   // Skip texture sampling (draw base colors only)
-    FLAG_SHOW_UVS               = 1 << 2,   // Render UV coordinates as RGB colors
-    FLAG_AFFINE_INTERPOLATION   = 1 << 3,   // Use Affine interpolation instead of baycentric interpolation (texture mapping)
-};
-
-
-
-/**
- * @brief Defines the rendering mode of the RHI
- */
-enum class RHIWindowType : uint8_t {
-    HEADLESS = 0,   // No window, renders to memmory
-    OPENCV = 1,     // cv::imshow window
-    GLFW = 2        // Hardware accelerated window
-};
-
-/**
- * @brief Types of rendering backends.
- */
-enum class RHIBackendType : uint8_t {
-    NONE = 0,
-    SOFTWARE = 1,   // CPU SIMD Rasterizer (defaults to scalar if SIMD is not supported)
-    OPENGL = 2      // GPU OpenGL FBOs
-};
-
-
-/**
- * @brief Generic OS Window Interface
- */
-struct RHIWindow {
-    RHIWindowType type { RHIWindowType::HEADLESS };
-    uint32_t width { 800 };
-    uint32_t height { 600 };
-    void* native_handle { nullptr }; // GLFWwindow* or const char* for OpenCV window name
-};
-
 
 /**
  * @brief Dispatch table for rendering backends.
@@ -122,25 +69,6 @@ struct RHIBackend {
     RHIDebugFlag (*GetActiveDebugFlags)(entt::registry& registry) { nullptr };
 
 };
-
-
-
-// RHIDebugFlag bitwise operations
-inline constexpr RHIDebugFlag operator|(RHIDebugFlag a, RHIDebugFlag b) { 
-    return static_cast<RHIDebugFlag>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b)); 
-}
-inline constexpr RHIDebugFlag operator&(RHIDebugFlag a, RHIDebugFlag b) { 
-    return static_cast<RHIDebugFlag>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b)); 
-}
-inline constexpr RHIDebugFlag operator~(RHIDebugFlag a) { 
-    return static_cast<RHIDebugFlag>(~static_cast<uint32_t>(a)); 
-}
-inline RHIDebugFlag& operator|=(RHIDebugFlag& a, RHIDebugFlag b) { 
-    return a = a | b; 
-}
-inline RHIDebugFlag& operator&=(RHIDebugFlag& a, RHIDebugFlag b) { 
-    return a = a & b; 
-}
 
 
 } // namespace rrl::rhi 

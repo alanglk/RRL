@@ -2,7 +2,8 @@
 #pragma once
 
 
-#include "RRL/rhi/RHIBackend.hpp"
+#include <entt/entt.hpp>
+#include "RRL/rhi/RHITypes.hpp"
 
 
 namespace rrl::debug::rhi {

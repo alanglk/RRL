@@ -17,7 +17,7 @@
 #include "RRL/tf/TransformTree.hpp"
 #include "RRL/camera/CameraSystem.hpp"
 #include "RRL/data/MeshData.hpp"
-#include "RRL/rhi/RHIAPI.hpp"
+#include "RRL/rhi/RHI.hpp"
 #include "entt/entity/fwd.hpp"
 
 
@@ -132,9 +132,7 @@ int main() {
         // Tick Engine Logic
         rrl::tf::UpdateTransformTree(registry);
         rrl::camera::UpdateCameras(registry, rrl::camera::NDC_OPENCV);
-        rrl::rhi::SyncResources(registry);
         rrl::rhi::RenderFrame(registry);
-        rrl::rhi::Present(registry); 
         rrl::rhi::PollWindowEvents(main_window); 
         
 

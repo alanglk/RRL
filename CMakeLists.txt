@@ -132,7 +132,7 @@ set(RRL_SOURCES
 
     src/scene/SceneManager.cpp
 
-    src/rhi/RHIAPI.cpp
+    src/rhi/RHI.cpp
     
     src/debug/TFDebugger.cpp
     src/debug/AssetManagerDebugger.cpp

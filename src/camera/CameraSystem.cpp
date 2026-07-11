@@ -137,7 +137,7 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
 
 
 // --- Lifecycle ---------------------------------------------------
-entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& model, rhi::RenderTargetHandle target_fbo, rhi::RenderLayer layer) {
+entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& model, rhi::RenderTargetHandle target_fbo, rhi::RHIRenderLayer layer) {
 
     // Ensure no other camera points to the same target_fbo (ignoring TARGET_NULL)
     auto view = registry.view<CameraComponent>();
@@ -201,7 +201,7 @@ void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::Ren
         }
     }
 }
-void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RenderLayer layer) {
+void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RHIRenderLayer layer) {
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraTarget failed: Entity lacks a CameraComponent!");
     auto& cam = registry.get<CameraComponent>(cam_entity);
     cam.culling_mask = layer;

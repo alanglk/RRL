@@ -1,9 +1,6 @@
 // RRL/src/include/RRL/data/TextureComponents.hpp
 #pragma once
 
-#include "RRL/data/ImageData.hpp"
-
-#include "RRL/rhi/RHILayers.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
 
 #include <atomic>
@@ -45,7 +42,7 @@ struct TextureLinkage {
     float screen_h { 1.0f }; // Full height default
     
     // What layer does this UI element belong to?
-    rhi::RenderLayer layer_mask { rhi::RenderLayer::LAYER_UI };
+    rhi::RHIRenderLayer layer_mask { rhi::RHIRenderLayer::LAYER_UI };
 };
 
 

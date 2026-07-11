@@ -1,9 +1,6 @@
 // RRL/src/include/RRL/data/MeshComponents.hpp
 #pragma once
 
-#include "RRL/data/MeshData.hpp"
-
-#include "RRL/rhi/RHILayers.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
 
 #include <atomic>
@@ -41,7 +38,7 @@ struct MeshLinkage {
     std::vector<entt::entity> materials;
 
     // What layer does this physical object belong to?
-    rhi::RenderLayer layer_mask { rhi::RenderLayer::LAYER_DEFAULT };
+    rhi::RHIRenderLayer layer_mask { rhi::RHIRenderLayer::LAYER_DEFAULT };
 };
 
 } // namespace rrl::data

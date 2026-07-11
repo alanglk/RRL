@@ -8,13 +8,12 @@
 
 #include "RRL/io/PrefabIO.hpp"
 
-#include "RRL/rhi/RHILayers.hpp"
 #include "RRL/tf/TransformTree.hpp"
 #include "RRL/data/AssetManager.hpp"
 #include "RRL/scene/SceneManager.hpp"
 #include "RRL/camera/CameraSystem.hpp"
 
-#include "RRL/rhi/RHIAPI.hpp"
+#include "RRL/rhi/RHI.hpp"
 #include "RRL/debug/RHIDebugger.hpp"
 
 
@@ -185,7 +184,7 @@ public:
         camera_model.aspect_ratio = static_cast<float>(robot_cam_width) / static_cast<float>(robot_cam_height);
         camera_model.z_near = 1.0f;     
         camera_model.z_far = 4000.0f;   
-        robot_cam = rrl::camera::SpawnCamera(registry, camera_model, cam_target, rrl::rhi::RenderLayer::LAYER_DEFAULT);
+        robot_cam = rrl::camera::SpawnCamera(registry, camera_model, cam_target, rrl::rhi::RHIRenderLayer::LAYER_DEFAULT);
         rrl::tf::AttachChild(registry, robot_instance, robot_cam, rrl::tf::TFDependencyPolicy::CASCADE_DELETE);
         rrl::tf::SetLocalPosition(registry, robot_cam, {1.5f, 0.0f, 1.5f});
         rrl::tf::SetLocalRotation(registry, robot_cam, glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
@@ -274,7 +273,7 @@ int main() {
     entt::entity main_camera = rrl::camera::SpawnCamera(registry, camera_model);
     rrl::camera::SetCameraPositionAndLookAt(registry, main_camera, {-10.0f, 0.0f, 5.0f}, {0.0f, 0.0f, 0.0f});
     rrl::camera::SetCameraLayer(registry, main_camera, 
-        rrl::rhi::RenderLayer::LAYER_DEFAULT | rrl::rhi::RenderLayer::LAYER_DEBUG
+        rrl::rhi::RHIRenderLayer::LAYER_DEFAULT | rrl::rhi::RHIRenderLayer::LAYER_DEBUG
     );
     
 
@@ -297,9 +296,7 @@ int main() {
         rrl::camera::UpdateCameras(registry, rrl::camera::NDC_OPENCV); 
 
         robot.Update(registry);
-        rrl::rhi::SyncResources(registry);
         rrl::rhi::RenderFrame(registry);
-        rrl::rhi::Present(registry);
         rrl::rhi::PollWindowEvents(main_window); 
     }
 

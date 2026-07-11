@@ -1,13 +1,12 @@
 // RRL/src/include/RRL/camera/CameraSystem.hpp
 #pragma once
 
+#include <entt/entt.hpp>
+
 #include "RRL/camera/CameraModels.hpp"
 #include "RRL/camera/CameraConventions.hpp"
+#include "RRL/rhi/RHITypes.hpp"
 
-#include "RRL/rhi/RHILayers.hpp"
-#include "RRL/rhi/RHIBackend.hpp"
-
-#include <entt/entt.hpp>
 
 
 namespace rrl::camera {
@@ -30,7 +29,7 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target);
 entt::entity SpawnCamera(entt::registry& registry, 
     const CameraModelVariant& model = PerspectiveModel{}, 
     rhi::RenderTargetHandle target_fbo = rhi::TARGET_MAIN,
-    rhi::RenderLayer layer = rhi::RenderLayer::LAYER_ALL
+    rhi::RHIRenderLayer layer = rhi::RHIRenderLayer::LAYER_ALL
 );
 /**
  * @brief Removes the camera from the registry. This completely destroys the camera entity.
@@ -56,7 +55,7 @@ void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::Ren
 /**
  * @brief Sets the rendering culling mask of the camera
  */
-void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RenderLayer layer);
+void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RHIRenderLayer layer);
 /**
  * @brief Sets the given entity as the primary camera, unsetting any other primary cameras.
  */

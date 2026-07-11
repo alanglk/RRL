@@ -17,7 +17,7 @@
 #include "RRL/data/MaterialData.hpp"
 #include "RRL/tf/TransformTree.hpp"
 #include "RRL/camera/CameraSystem.hpp"
-#include "RRL/rhi/RHIAPI.hpp"
+#include "RRL/rhi/RHI.hpp"
 
 using namespace rrl;
 
@@ -193,11 +193,9 @@ int main() {
         // --- 2. Engine Tick ---
         tf::UpdateTransformTree(registry);
         camera::UpdateCameras(registry, camera::NDC_OPENGL);
-        rhi::SyncResources(registry);
         
         rhi::RenderFrame(registry);
-        rhi::Present(registry); 
-        
+        rhi::PollWindowEvents(main_window);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
