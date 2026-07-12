@@ -22,7 +22,8 @@ jobs:
     strategy:
       fail-fast: false 
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # os: [ubuntu-latest, macos-latest, windows-latest] # For now just ubuntu
+        os: [ubuntu-latest]
 
     # CI steps
     steps:
@@ -42,7 +43,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev
+          sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev libxkbcommon-dev libwayland-dev xorg-dev
       - name: Install macOS Dependencies
         if: runner.os == 'macOS'
         run: |
