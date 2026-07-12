@@ -42,16 +42,16 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev
+          sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev
       - name: Install macOS Dependencies
         if: runner.os == 'macOS'
         run: |
-          brew install ninja opencv glfw fmt
+          brew install ninja opencv glfw fmt boost
       - name: Install Windows Dependencies
         if: runner.os == 'Windows'
         run: |
           choco install ninja --confirm
-          vcpkg install fmt glfw3 opencv4:x64-windows
+          vcpkg install fmt glfw3 opencv4:x64-windows boost:x64-windows
       
 
       # --- Verification (Test Preset) ----------------------------
