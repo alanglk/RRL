@@ -1,0 +1,121 @@
+name: RRL CI/CD Pipeline
+
+
+# --- CI Execution Policies ---------------------------------------
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+
+# --- CI Jobs -----------------------------------------------------
+jobs:
+
+  # --- Build | Test | Package Job --------------------------------
+  build-test-package:
+
+    # Allow compilation on different platforms
+    name: ${{ matrix.os }} Build & Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false 
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    # CI steps
+    steps:
+
+      # --- Checkout ----------------------------------------------
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive 
+
+      # --- Dependencies ------------------------------------------
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.os }}-ccache
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev
+      - name: Install macOS Dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install ninja opencv glfw
+      - name: Install Windows Dependencies
+        if: runner.os == 'Windows'
+        run: |
+          choco install ninja --confirm
+      
+
+      # --- Verification (Test Preset) ----------------------------
+      - name: Configure Tests
+        run: cmake --preset test
+
+      - name: Build Tests
+        run: cmake --build --preset test
+
+      - name: Run Tests
+        run: ctest --preset run-tests
+
+
+      # --- Distribution (Release Preset) -------------------------
+      - name: Configure Release Packages
+        run: cmake --preset release
+
+      - name: Build Release Packages
+        run: cmake --build --preset release
+
+      - name: Generate Packages (CPack)
+        run: |
+          cd build/release
+          cpack -C Release
+
+
+      # --- Upload Artifacts --------------------------------------
+      - name: Upload Distributable Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: RRL-Packages-${{ matrix.os }}
+          path: |
+            build/release/*.zip
+            build/release/*.tar.gz
+            build/release/*.deb
+            build/release/*.rpm
+            build/release/*.dmg
+            build/release/*.msi
+          if-no-files-found: warn
+
+
+
+  # --- Release Job -----------------------------------------------
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-test-package
+    runs-on: ubuntu-latest
+
+    # Only run this job if a tag starting with 'v' was pushed
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    # Release required permission 
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: RRL-Packages-*
+          path: dist/
+          merge-multiple: true # Flattens all files into the dist/ directory
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
