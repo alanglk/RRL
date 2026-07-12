@@ -42,20 +42,27 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev
+          sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev
       - name: Install macOS Dependencies
         if: runner.os == 'macOS'
         run: |
-          brew install ninja opencv glfw
+          brew install ninja opencv glfw fmt
       - name: Install Windows Dependencies
         if: runner.os == 'Windows'
         run: |
           choco install ninja --confirm
+          vcpkg install fmt glfw3 opencv4:x64-windows
       
 
       # --- Verification (Test Preset) ----------------------------
-      - name: Configure Tests
+      - name: Configure Tests (Linux/macOS)
+        if: runner.os != 'Windows'
         run: cmake --preset test
+
+      - name: Configure Tests (Windows)
+        if: runner.os == 'Windows'
+        # Pass the vcpkg toolchain so CMake finds the packages
+        run: cmake --preset test "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake"
 
       - name: Build Tests
         run: cmake --build --preset test
@@ -65,8 +72,13 @@ jobs:
 
 
       # --- Distribution (Release Preset) -------------------------
-      - name: Configure Release Packages
+      - name: Configure Release Packages (Linux/macOS)
+        if: runner.os != 'Windows'
         run: cmake --preset release
+
+      - name: Configure Release Packages (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --preset release "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake"
 
       - name: Build Release Packages
         run: cmake --build --preset release
