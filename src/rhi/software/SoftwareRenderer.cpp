@@ -4,12 +4,12 @@
 // Runtime components
 #include "RRL/camera/CameraComponents.hpp"
 #include "RRL/tf/TFComponents.hpp"
-#include "RRL/data/TextureComponents.hpp"
-#include "RRL/data/MeshComponents.hpp"
-#include "RRL/data/MaterialComponents.hpp"
+#include "RRL/asset/TextureComponents.hpp"
+#include "RRL/asset/MeshComponents.hpp"
+#include "RRL/asset/MaterialComponents.hpp"
 
 
-#include "RRL/data/ImageData.hpp"
+#include "RRL/asset/ImageAsset.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
 #include "RRL/rhi/software/SWRRasterizer.hpp"
 
@@ -47,16 +47,16 @@ struct SoftwareContext {
     const RHIWindow* active_window { nullptr };
     
     // Core Engine Data Buffers 
-    std::unordered_map<RenderTargetHandle, data::ImageData> render_targets;
-    std::unordered_map<RenderTargetHandle, data::ImageData> depth_buffers;
+    std::unordered_map<RenderTargetHandle, rrl::asset::ImageAsset> render_targets;
+    std::unordered_map<RenderTargetHandle, rrl::asset::ImageAsset> depth_buffers;
     std::unordered_map<RenderTargetHandle, software::ColorFormatCache> rt_formats;
 
-    std::unordered_map<TextureHandle, data::ImageData> textures;
+    std::unordered_map<TextureHandle, rrl::asset::ImageAsset> textures;
     std::unordered_map<TextureHandle, software::ColorFormatCache> tex_formats;
 
     // Assets
     std::unordered_map<MeshHandle, software::SWRMesh> meshes; 
-    std::unordered_map<MaterialHandle, data::MaterialData> materials;
+    std::unordered_map<MaterialHandle, rrl::asset::MaterialAsset> materials;
 
     // Vertex Shader Working Buffer 
     software::SWRVertexBuffer working_vertex_buffer;
@@ -90,24 +90,24 @@ static bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t
     ctx.active_window = window;
 
     // Create TARGET_MAIN
-    data::ImageData rt;
+    rrl::asset::ImageAsset rt;
     rt.width = render_width; 
     rt.height = render_height; 
-    rt.data_type = data::ImageDataType::UINT8;
-    rt.channels = data::ImageChannelLayout::CH_3;
-    rt.color_layout = data::ImageColorLayout::BGR;
+    rt.data_type = rrl::asset::ImageAssetType::UINT8;
+    rt.channels = rrl::asset::ImageChannelLayout::CH_3;
+    rt.color_layout = rrl::asset::ImageColorLayout::BGR;
     rt.data.resize(render_width * render_height * 3, 30);
     ctx.render_targets[TARGET_MAIN] = std::move(rt);
     ctx.rt_formats[TARGET_MAIN]     = software::GetColorFormatCache(rt.color_layout, rt.channels);
     RRL_ASSERT(rt.IsImageModelValid(), "[Software RHI] Error creating TARGET_MAIN image");
     
     // Create Depth buffer
-    data::ImageData depth;
+    rrl::asset::ImageAsset depth;
     depth.width = render_width; 
     depth.height = render_height;
-    depth.data_type = data::ImageDataType::FLOAT32;
-    depth.channels = data::ImageChannelLayout::CH_1; 
-    depth.color_layout = data::ImageColorLayout::NONE; 
+    depth.data_type = rrl::asset::ImageAssetType::FLOAT32;
+    depth.channels = rrl::asset::ImageChannelLayout::CH_1; 
+    depth.color_layout = rrl::asset::ImageColorLayout::NONE; 
     depth.data.resize(render_width * render_height * sizeof(float));
     ctx.depth_buffers[TARGET_MAIN] = std::move(depth);
     RRL_ASSERT(depth.IsImageModelValid(), "[Software RHI] Error creating TARGET_MAIN depth buffer");
@@ -155,7 +155,7 @@ static void RenderFrame(entt::registry& registry) {
     bool runtime_affine_override = (ctx.debug_flag & RHIDebugFlag::FLAG_AFFINE_INTERPOLATION) != RHIDebugFlag::FLAG_NONE;
 
     // 3D Rendering (loop for each camera and for each mesh (sub mesh material rendering))
-    auto mesh_view = registry.view<tf::TFWorldTransformComponent, data::MeshLinkage>();
+    auto mesh_view = registry.view<tf::TFWorldTransformComponent, rrl::asset::MeshLinkage>();
     auto cam_view = registry.view<camera::CameraComponent, camera::CameraRuntimeComponent>();
     for (auto cam_entity : cam_view) {
         const auto& cam = cam_view.get<camera::CameraComponent>(cam_entity);
@@ -164,8 +164,8 @@ static void RenderFrame(entt::registry& registry) {
         auto target_it = ctx.render_targets.find(cam.target_fbo);
         if (target_it == ctx.render_targets.end()) continue;
         
-        data::ImageData& render_target = target_it->second;
-        data::ImageData& depth_buffer = ctx.depth_buffers[cam.target_fbo];
+        rrl::asset::ImageAsset& render_target = target_it->second;
+        rrl::asset::ImageAsset& depth_buffer = ctx.depth_buffers[cam.target_fbo];
         const auto& rt_format = ctx.rt_formats[cam.target_fbo];
 
         float half_w = static_cast<float>(render_target.width) * 0.5f;
@@ -173,13 +173,13 @@ static void RenderFrame(entt::registry& registry) {
 
         for (auto physical_entity : mesh_view) {
             const auto& world_tf = mesh_view.get<tf::TFWorldTransformComponent>(physical_entity);
-            const auto& linkage = mesh_view.get<data::MeshLinkage>(physical_entity);
+            const auto& linkage = mesh_view.get<rrl::asset::MeshLinkage>(physical_entity);
             
             if (!registry.valid(linkage.mesh_asset)) continue;
-            if (!registry.all_of<data::MeshRuntimeComponent>(linkage.mesh_asset)) continue;
+            if (!registry.all_of<rrl::asset::MeshRuntimeComponent>(linkage.mesh_asset)) continue;
             if ((cam.culling_mask & linkage.layer_mask) == rhi::RHIRenderLayer::LAYER_NONE) continue;
 
-            MeshHandle mesh_handle = registry.get<data::MeshRuntimeComponent>(linkage.mesh_asset).handle;
+            MeshHandle mesh_handle = registry.get<rrl::asset::MeshRuntimeComponent>(linkage.mesh_asset).handle;
             if (ctx.meshes.find(mesh_handle) == ctx.meshes.end()) continue;
             const auto& mesh = ctx.meshes[mesh_handle];
 
@@ -189,7 +189,7 @@ static void RenderFrame(entt::registry& registry) {
             software::SWRVertexShader(mesh, mvp, ctx.working_vertex_buffer);
 
             // Point Cloud Rasterization
-            if (mesh.topology == data::MeshTopology::POINTS) {
+            if (mesh.topology == rrl::asset::MeshTopology::POINTS) {
                 for (size_t i = 0; i < mesh.active_vertex_count; ++i) {
                     const glm::vec4& ndc = ctx.working_vertex_buffer.ndc_positions[i];
                     
@@ -214,14 +214,14 @@ static void RenderFrame(entt::registry& registry) {
             // Triangles and Lines Rasterization
             else if (!mesh.indices.empty()) {
                 // Fallback if the geometry has no submesh groups defined
-                std::vector<data::MeshSubmesh> default_submesh = {{0, static_cast<uint32_t>(mesh.indices.size())}};
-                const std::vector<data::MeshSubmesh>& active_submeshes = mesh.submeshes.empty() ? default_submesh : mesh.submeshes;
+                std::vector<rrl::asset::MeshSubmesh> default_submesh = {{0, static_cast<uint32_t>(mesh.indices.size())}};
+                const std::vector<rrl::asset::MeshSubmesh>& active_submeshes = mesh.submeshes.empty() ? default_submesh : mesh.submeshes;
 
                 for (size_t i = 0; i < active_submeshes.size(); ++i) {
                     const auto& submesh = active_submeshes[i];
                     
                     glm::vec4 mat_base_color(1.0f, 1.0f, 1.0f, 1.0f);
-                    const data::ImageData* active_albedo = nullptr;
+                    const rrl::asset::ImageAsset* active_albedo = nullptr;
                     software::ColorFormatCache tex_format{};
                     
                     // Fetch the material from the linkage component
@@ -231,9 +231,9 @@ static void RenderFrame(entt::registry& registry) {
                     }
                     
                     // Resolve the material properties and textures
-                    if (registry.valid(mat_entity) && registry.all_of<data::MaterialRuntimeComponent>(mat_entity)) {
+                    if (registry.valid(mat_entity) && registry.all_of<rrl::asset::MaterialRuntimeComponent>(mat_entity)) {
                         
-                        const auto& mat_runtime = registry.get<data::MaterialRuntimeComponent>(mat_entity);
+                        const auto& mat_runtime = registry.get<rrl::asset::MaterialRuntimeComponent>(mat_entity);
                         
                         // Base material values
                         auto mat_it = ctx.materials.find(mat_runtime.handle);
@@ -263,20 +263,20 @@ static void RenderFrame(entt::registry& registry) {
     }
 
     // 2D Rendering (UI Layer)
-    auto ui_view = registry.view<data::TextureLinkage>();
-    data::ImageData& main_target = ctx.render_targets[TARGET_MAIN];
+    auto ui_view = registry.view<rrl::asset::TextureLinkage>();
+    rrl::asset::ImageAsset& main_target = ctx.render_targets[TARGET_MAIN];
     const auto& main_fmt = ctx.rt_formats[TARGET_MAIN];
     for (auto ui_entity : ui_view) {
-        const auto& linkage = ui_view.get<data::TextureLinkage>(ui_entity);
+        const auto& linkage = ui_view.get<rrl::asset::TextureLinkage>(ui_entity);
         
         if (!registry.valid(linkage.texture_asset)) continue;
-        if (!registry.all_of<data::TextureRuntimeComponent>(linkage.texture_asset)) continue;
+        if (!registry.all_of<rrl::asset::TextureRuntimeComponent>(linkage.texture_asset)) continue;
         if ((linkage.layer_mask & rhi::RHIRenderLayer::LAYER_UI) == rhi::RHIRenderLayer::LAYER_NONE) continue;
         
-        rhi::TextureHandle tex_handle = registry.get<data::TextureRuntimeComponent>(linkage.texture_asset).handle;
+        rhi::TextureHandle tex_handle = registry.get<rrl::asset::TextureRuntimeComponent>(linkage.texture_asset).handle;
         if (ctx.textures.find(tex_handle) == ctx.textures.end()) continue;
 
-        const data::ImageData& source_tex = ctx.textures[tex_handle];
+        const rrl::asset::ImageAsset& source_tex = ctx.textures[tex_handle];
         const auto& src_fmt = ctx.tex_formats[tex_handle];
         
         int px = static_cast<int>(linkage.screen_x * main_target.width);
@@ -302,21 +302,21 @@ static RenderTargetHandle CreateTarget(entt::registry& registry, uint32_t width,
     
     RenderTargetHandle handle = ctx.next_handle++;
     
-    data::ImageData rt;
+    rrl::asset::ImageAsset rt;
     rt.width = width; rt.height = height; 
-    rt.data_type = data::ImageDataType::UINT8;
-    rt.channels = data::ImageChannelLayout::CH_3;
-    rt.color_layout = data::ImageColorLayout::RGB;
+    rt.data_type = rrl::asset::ImageAssetType::UINT8;
+    rt.channels = rrl::asset::ImageChannelLayout::CH_3;
+    rt.color_layout = rrl::asset::ImageColorLayout::RGB;
     rt.data.resize(width * height * 3, 0);
     ctx.render_targets[handle]  = std::move(rt);
     ctx.rt_formats[handle]      = software::GetColorFormatCache(rt.color_layout, rt.channels);
     RRL_ASSERT(rt.IsImageModelValid(), "[OpernCV RHI] Error creating the '{}' FBO target image");
     
-    data::ImageData depth;
+    rrl::asset::ImageAsset depth;
     depth.width = width; depth.height = height; 
-    depth.data_type = data::ImageDataType::FLOAT32;
-    depth.channels = data::ImageChannelLayout::CH_1;
-    rt.color_layout = data::ImageColorLayout::NONE;
+    depth.data_type = rrl::asset::ImageAssetType::FLOAT32;
+    depth.channels = rrl::asset::ImageChannelLayout::CH_1;
+    rt.color_layout = rrl::asset::ImageColorLayout::NONE;
     depth.data.resize(width * height * sizeof(float));
     ctx.depth_buffers[handle] = std::move(depth);
     RRL_ASSERT(depth.IsImageModelValid(), "[OpernCV RHI] Error creating the '{}' FBO target depth buffer");
@@ -336,7 +336,7 @@ RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not init
 
 
 // --- Textures ----------------------------------------------------
-static void UpdateTexture(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) {
+static void UpdateTexture(entt::registry& registry, TextureHandle handle, const rrl::asset::ImageAsset& image_data) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
     RRL_ASSERT(image_data.IsImageModelValid(), "SoftwareBackend received an invalid image model for texture updating!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
@@ -345,13 +345,13 @@ static void UpdateTexture(entt::registry& registry, TextureHandle handle, const 
     ctx.textures[handle] = image_data;
     ctx.tex_formats[handle] = software::GetColorFormatCache(image_data.color_layout, image_data.channels);
 }
-static TextureHandle CreateTexture(entt::registry& registry, const data::ImageData& image_data) {
+static TextureHandle CreateTexture(entt::registry& registry, const rrl::asset::ImageAsset& image_data) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
     RRL_ASSERT(image_data.IsImageModelValid(), "OpenCVRenderer received an invalid image model for texture creation!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
 
     TextureHandle handle = ctx.next_tex_handle++;
-    ctx.textures[handle] = data::ImageData{};
+    ctx.textures[handle] = rrl::asset::ImageAsset{};
     UpdateTexture(registry, handle, image_data);
     return handle;
 }
@@ -365,19 +365,19 @@ static void DestroyTexture(entt::registry& registry, TextureHandle handle) {
 
 
 // --- Meshes ------------------------------------------------------
-static void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::MeshData& mesh_data) {
+static void UpdateMesh(entt::registry& registry, MeshHandle handle, const rrl::asset::MeshAsset& mesh_data) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
     if (ctx.meshes.find(handle) != ctx.meshes.end()) {
-        software::LoadMeshDataIntoSWRMesh(mesh_data, ctx.meshes[handle]);
+        software::LoadMeshAssetIntoSWRMesh(mesh_data, ctx.meshes[handle]);
     }
 }
-static MeshHandle CreateMesh(entt::registry& registry, const data::MeshData& mesh_data) {
+static MeshHandle CreateMesh(entt::registry& registry, const rrl::asset::MeshAsset& mesh_data) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
     MeshHandle handle = ctx.next_mesh_handle++;
     
-    software::LoadMeshDataIntoSWRMesh(mesh_data, ctx.meshes[handle]);
+    software::LoadMeshAssetIntoSWRMesh(mesh_data, ctx.meshes[handle]);
     return handle;
 }
 static void DestroyMesh(entt::registry& registry, MeshHandle handle) {
@@ -389,14 +389,14 @@ static void DestroyMesh(entt::registry& registry, MeshHandle handle) {
 
 
 // --- Materials ---------------------------------------------------
-static void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data) {
+static void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const rrl::asset::MaterialAsset& material_data) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
     if (ctx.materials.find(handle) != ctx.materials.end()) {
         ctx.materials[handle] = material_data;
     }
 }
-static MaterialHandle CreateMaterial(entt::registry& registry, const data::MaterialData& material_data) {
+static MaterialHandle CreateMaterial(entt::registry& registry, const rrl::asset::MaterialAsset& material_data) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
     MaterialHandle handle = ctx.next_mat_handle++;
@@ -412,12 +412,12 @@ static void DestroyMaterial(entt::registry& registry, MaterialHandle handle) {
 
 
 // --- Presentation ------------------------------------------------
-static data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
+static rrl::asset::ImageAsset GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
 
-    // Return a copy of the raw ImageData 
-    if (ctx.render_targets.find(handle) == ctx.render_targets.end()) return data::ImageData{};
+    // Return a copy of the raw ImageAsset 
+    if (ctx.render_targets.find(handle) == ctx.render_targets.end()) return rrl::asset::ImageAsset{};
     return ctx.render_targets[handle];
 }
 static void Present(entt::registry& registry) {
@@ -431,7 +431,7 @@ static void Present(entt::registry& registry) {
     if (window->type == RHIWindowType::OPENCV) {
         #ifdef RRL_BUILD_WINDOW_OPENCV 
         const char* win_name = static_cast<const char*>(window->native_handle);
-        data::ImageData& main_fbo = ctx.render_targets[TARGET_MAIN];
+        rrl::asset::ImageAsset& main_fbo = ctx.render_targets[TARGET_MAIN];
         cv::Mat fbo_mat(main_fbo.height, main_fbo.width, CV_8UC3, main_fbo.data.data());
         
         // Scale to the Window Size if it differs from the rendering resolution
@@ -469,32 +469,32 @@ static void Present(entt::registry& registry) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
         // Fetch data
-        data::ImageData main_fbo = GetTargetImage(registry, TARGET_MAIN);
+        rrl::asset::ImageAsset main_fbo = GetTargetImage(registry, TARGET_MAIN);
         if (main_fbo.data.empty()) return;
 
         // OpenGL Format Mapping
         GLenum gl_internal_format   = GL_RGB8;
         GLenum gl_type              = GL_UNSIGNED_BYTE;
-        if (main_fbo.data_type == data::ImageDataType::UINT8) {
+        if (main_fbo.data_type == rrl::asset::ImageAssetType::UINT8) {
             gl_type = GL_UNSIGNED_BYTE;
-            if (main_fbo.channels == data::ImageChannelLayout::CH_1)        gl_internal_format = GL_R8;
-            else if (main_fbo.channels == data::ImageChannelLayout::CH_3)   gl_internal_format = GL_RGB8;
-            else if (main_fbo.channels == data::ImageChannelLayout::CH_4)   gl_internal_format = GL_RGBA8;
+            if (main_fbo.channels == rrl::asset::ImageChannelLayout::CH_1)        gl_internal_format = GL_R8;
+            else if (main_fbo.channels == rrl::asset::ImageChannelLayout::CH_3)   gl_internal_format = GL_RGB8;
+            else if (main_fbo.channels == rrl::asset::ImageChannelLayout::CH_4)   gl_internal_format = GL_RGBA8;
         } 
-        else if (main_fbo.data_type == data::ImageDataType::FLOAT32) {
+        else if (main_fbo.data_type == rrl::asset::ImageAssetType::FLOAT32) {
             gl_type = GL_FLOAT;
-            if (main_fbo.channels == data::ImageChannelLayout::CH_1)        gl_internal_format = GL_R32F;
-            else if (main_fbo.channels == data::ImageChannelLayout::CH_3)   gl_internal_format = GL_RGB32F;
-            else if (main_fbo.channels == data::ImageChannelLayout::CH_4)   gl_internal_format = GL_RGBA32F;
+            if (main_fbo.channels == rrl::asset::ImageChannelLayout::CH_1)        gl_internal_format = GL_R32F;
+            else if (main_fbo.channels == rrl::asset::ImageChannelLayout::CH_3)   gl_internal_format = GL_RGB32F;
+            else if (main_fbo.channels == rrl::asset::ImageChannelLayout::CH_4)   gl_internal_format = GL_RGBA32F;
         }
 
         // OpenGL Color Layout Mapping
         GLenum gl_format = GL_RGB;
-        if (main_fbo.color_layout == data::ImageColorLayout::RGB)       gl_format = GL_RGB;
-        else if (main_fbo.color_layout == data::ImageColorLayout::BGR)  gl_format = GL_BGR;
-        else if (main_fbo.color_layout == data::ImageColorLayout::RGBA) gl_format = GL_RGBA;
-        else if (main_fbo.color_layout == data::ImageColorLayout::BGRA) gl_format = GL_BGRA;
-        else if (main_fbo.channels == data::ImageChannelLayout::CH_1)   gl_format = GL_RED;
+        if (main_fbo.color_layout == rrl::asset::ImageColorLayout::RGB)       gl_format = GL_RGB;
+        else if (main_fbo.color_layout == rrl::asset::ImageColorLayout::BGR)  gl_format = GL_BGR;
+        else if (main_fbo.color_layout == rrl::asset::ImageColorLayout::RGBA) gl_format = GL_RGBA;
+        else if (main_fbo.color_layout == rrl::asset::ImageColorLayout::BGRA) gl_format = GL_BGRA;
+        else if (main_fbo.channels == rrl::asset::ImageChannelLayout::CH_1)   gl_format = GL_RED;
 
         // OpenGL Image Origin Mapping
         // If the CPU image is Top-Left, we must flip it vertically for OpenGL's Bottom-Left screen.
@@ -502,7 +502,7 @@ static void Present(entt::registry& registry) {
         int dst_y0 = 0;
         int dst_y1 = win_h;
         glfwGetFramebufferSize(gl_window, &win_w, &win_h);
-        if (main_fbo.origin == data::ImageOrigin::TOP_LEFT) {
+        if (main_fbo.origin == rrl::asset::ImageOrigin::TOP_LEFT) {
             dst_y0 = win_h;
             dst_y1 = 0;
         }

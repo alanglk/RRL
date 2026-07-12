@@ -5,7 +5,7 @@
 #include "RRL/rhi/software/SIMDTypes.hpp"
 #include "RRL/rhi/software/SWRMath.hpp"
 
-#include "RRL/data/ImageData.hpp"
+#include "RRL/asset/ImageAsset.hpp"
 #include <algorithm>
 
 #include "RRL/DebugMacros.hpp"
@@ -20,19 +20,19 @@ namespace rrl::rhi::software {
 
 // --- Image Helpers -----------------------------------------------
 enum class RGBAOffsets { R = 0, G = 1, B = 2, A = 3 };
-static inline int GetNumChannels(rrl::data::ImageChannelLayout channels) {
+static inline int GetNumChannels(rrl::asset::ImageChannelLayout channels) {
     switch (channels) {
-        case rrl::data::ImageChannelLayout::CH_1:  return 1;
-        case rrl::data::ImageChannelLayout::CH_2:  return 2;
-        case rrl::data::ImageChannelLayout::CH_3:  return 3;
-        case rrl::data::ImageChannelLayout::CH_4:  return 4;
+        case rrl::asset::ImageChannelLayout::CH_1:  return 1;
+        case rrl::asset::ImageChannelLayout::CH_2:  return 2;
+        case rrl::asset::ImageChannelLayout::CH_3:  return 3;
+        case rrl::asset::ImageChannelLayout::CH_4:  return 4;
         default: return 0;
     }
 }
-static inline uint8_t GetRGBOffset(rrl::data::ImageColorLayout layout, RGBAOffsets offset) {
+static inline uint8_t GetRGBOffset(rrl::asset::ImageColorLayout layout, RGBAOffsets offset) {
     switch (layout) {
-        case rrl::data::ImageColorLayout::RGB:
-        case rrl::data::ImageColorLayout::RGBA: 
+        case rrl::asset::ImageColorLayout::RGB:
+        case rrl::asset::ImageColorLayout::RGBA: 
             switch (offset) {
                 case RGBAOffsets::R: return 0;
                 case RGBAOffsets::G: return 1;
@@ -41,8 +41,8 @@ static inline uint8_t GetRGBOffset(rrl::data::ImageColorLayout layout, RGBAOffse
             }
             break;
 
-        case rrl::data::ImageColorLayout::BGR:
-        case rrl::data::ImageColorLayout::BGRA: 
+        case rrl::asset::ImageColorLayout::BGR:
+        case rrl::asset::ImageColorLayout::BGRA: 
             switch (offset) {
                 case RGBAOffsets::R: return 2;
                 case RGBAOffsets::G: return 1;
@@ -51,7 +51,7 @@ static inline uint8_t GetRGBOffset(rrl::data::ImageColorLayout layout, RGBAOffse
             }
             break;
 
-        case rrl::data::ImageColorLayout::HSV:
+        case rrl::asset::ImageColorLayout::HSV:
             switch (offset) {
                 case RGBAOffsets::R: return 2;
                 case RGBAOffsets::G: return 1;
@@ -64,11 +64,11 @@ static inline uint8_t GetRGBOffset(rrl::data::ImageColorLayout layout, RGBAOffse
     }
     return 0; 
 }
-static inline stbir_pixel_layout GetSTBPixelLayout(rrl::data::ImageColorLayout layout, int channels) {
+static inline stbir_pixel_layout GetSTBPixelLayout(rrl::asset::ImageColorLayout layout, int channels) {
     if (channels == 3) {
-        return (layout == rrl::data::ImageColorLayout::BGR) ? STBIR_BGR : STBIR_RGB;
+        return (layout == rrl::asset::ImageColorLayout::BGR) ? STBIR_BGR : STBIR_RGB;
     } else if (channels == 4) {
-        return (layout == rrl::data::ImageColorLayout::BGRA) ? STBIR_BGRA : STBIR_RGBA;
+        return (layout == rrl::asset::ImageColorLayout::BGRA) ? STBIR_BGRA : STBIR_RGBA;
     }
     return (channels == 1) ? STBIR_1CHANNEL : STBIR_2CHANNEL;
 }
@@ -119,12 +119,12 @@ static inline glm::vec4 GetColor(const SWRMesh& mesh, uint32_t index) {
 
 
 // --- API ---------------------------------------------------------
-ColorFormatCache GetColorFormatCache(rrl::data::ImageColorLayout layout, rrl::data::ImageChannelLayout channels) {
+ColorFormatCache GetColorFormatCache(rrl::asset::ImageColorLayout layout, rrl::asset::ImageChannelLayout channels) {
     return {
         GetNumChannels(channels),GetRGBOffset(layout, RGBAOffsets::R),GetRGBOffset(layout, RGBAOffsets::G), GetRGBOffset(layout, RGBAOffsets::B)
     };
 }
-void LoadMeshDataIntoSWRMesh(const rrl::data::MeshData& mesh_data, SWRMesh& mesh_swr) {
+void LoadMeshAssetIntoSWRMesh(const rrl::asset::MeshAsset& mesh_data, SWRMesh& mesh_swr) {
     mesh_swr.topology               = mesh_data.topology;
     mesh_swr.indices                = mesh_data.indices;
     mesh_swr.submeshes              = mesh_data.submeshes;
@@ -200,7 +200,7 @@ void LoadMeshDataIntoSWRMesh(const rrl::data::MeshData& mesh_data, SWRMesh& mesh
 // Primitive drawing
 
 void SWRDrawPoint(
-    rrl::data::ImageData& rt, rrl::data::ImageData& depth, 
+    rrl::asset::ImageAsset& rt, rrl::asset::ImageAsset& depth, 
     const glm::vec3& p, int radius, const glm::vec3& color, const ColorFormatCache& format) 
 {
     int cx = static_cast<int>(p.x);
@@ -232,7 +232,7 @@ void SWRDrawPoint(
     }
 }
 void SWRDrawLine(
-    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    rrl::asset::ImageAsset& render_target, rrl::asset::ImageAsset& depth_buffer, 
     const glm::vec3& p0, const glm::vec3& p1, 
     const glm::vec3& color, const ColorFormatCache& format) 
 {
@@ -284,7 +284,7 @@ void SWRDrawLine(
     }
 }
 void SWRDrawWireframeTriangle(
-    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    rrl::asset::ImageAsset& render_target, rrl::asset::ImageAsset& depth_buffer, 
     const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& p2,
     const glm::vec3& color, const ColorFormatCache& format) 
 {
@@ -293,7 +293,7 @@ void SWRDrawWireframeTriangle(
     SWRDrawLine(render_target, depth_buffer, p2, p0, color, format);
 }
 void SWRDrawTexture2D(
-    rrl::data::ImageData& rt, const rrl::data::ImageData& tex,
+    rrl::asset::ImageAsset& rt, const rrl::asset::ImageAsset& tex,
     int px, int py, int pw, int ph,
     const ColorFormatCache& rt_fmt, const ColorFormatCache& tex_fmt)
 {
@@ -411,12 +411,12 @@ void SWRVertexShader(const SWRMesh& mesh, const glm::mat4& mvp, SWRVertexBuffer&
     }
 }
 void RasterizeTriangle(
-    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    rrl::asset::ImageAsset& render_target, rrl::asset::ImageAsset& depth_buffer, 
     const glm::vec4& v0, const glm::vec4& v1, const glm::vec4& v2,  // NDC + ClipW for depth interp
     const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2,  // Screen coords for edge equations
     const SWRMesh& mesh, const SWRVertexBuffer& vertex_buffer, 
     uint32_t i0, uint32_t i1, uint32_t i2,                          // Mesh indices for UV lookups
-    const glm::vec4& mat_base_color, const rrl::data::ImageData* active_albedo,
+    const glm::vec4& mat_base_color, const rrl::asset::ImageAsset* active_albedo,
     const ColorFormatCache& rt_format, const ColorFormatCache& tex_format,
     bool disable_textures, bool show_uvs, bool runtime_affine_override 
 ) {
@@ -523,30 +523,30 @@ void RasterizeTriangle(
     }
 }
 void SWRRender3DMesh(
-    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    rrl::asset::ImageAsset& render_target, rrl::asset::ImageAsset& depth_buffer, 
     const SWRMesh& mesh, const SWRVertexBuffer& vertex_buffer,
     uint32_t index_offset, uint32_t index_count,
-    const glm::vec4& mat_base_color, const rrl::data::ImageData* active_albedo,
+    const glm::vec4& mat_base_color, const rrl::asset::ImageAsset* active_albedo,
     const ColorFormatCache& rt_format, const ColorFormatCache& tex_format,
     bool disable_textures, bool show_uvs, bool runtime_affine_override, bool draw_wireframes
 ) {
     if (mesh.indices.empty()) return;
     
     RRL_ASSERT(render_target.IsImageModelValid(), "[SWRRender3DMesh] Received a non valid render_target model");
-    RRL_ASSERT( (   render_target.color_layout != rrl::data::ImageColorLayout::NONE && 
-                    render_target.color_layout != rrl::data::ImageColorLayout::GRAY && 
-                    render_target.color_layout != rrl::data::ImageColorLayout::HSV      ), 
+    RRL_ASSERT( (   render_target.color_layout != rrl::asset::ImageColorLayout::NONE && 
+                    render_target.color_layout != rrl::asset::ImageColorLayout::GRAY && 
+                    render_target.color_layout != rrl::asset::ImageColorLayout::HSV      ), 
         "[SWRRender3DMesh] Received a render_target with non supported color space layout");
-    RRL_ASSERT(render_target.data_type == rrl::data::ImageDataType::UINT8, "[SWRRender3DMesh] Received a render_target with data type not equal to UINT8");
+    RRL_ASSERT(render_target.data_type == rrl::asset::ImageAssetType::UINT8, "[SWRRender3DMesh] Received a render_target with data type not equal to UINT8");
     RRL_ASSERT(depth_buffer.IsImageModelValid(), "[SWRRender3DMesh] Received a non valid depth_buffer model");
-    RRL_ASSERT(depth_buffer.color_layout == rrl::data::ImageColorLayout::NONE, "[SWRRender3DMesh] Received a depth_buffer with non supported color space layout");
-    RRL_ASSERT(depth_buffer.data_type == rrl::data::ImageDataType::FLOAT32, "[SWRRender3DMesh] Received a depth_buffer with data type not equal to FLOAT32");
+    RRL_ASSERT(depth_buffer.color_layout == rrl::asset::ImageColorLayout::NONE, "[SWRRender3DMesh] Received a depth_buffer with non supported color space layout");
+    RRL_ASSERT(depth_buffer.data_type == rrl::asset::ImageAssetType::FLOAT32, "[SWRRender3DMesh] Received a depth_buffer with data type not equal to FLOAT32");
 
     // Viewport scaling
     float half_w = static_cast<float>(render_target.width) * 0.5f;
     float half_h = static_cast<float>(render_target.height) * 0.5f;
 
-    size_t step = (mesh.topology == rrl::data::MeshTopology::TRIANGLES) ? 3 : 2;
+    size_t step = (mesh.topology == rrl::asset::MeshTopology::TRIANGLES) ? 3 : 2;
     uint32_t end_idx = std::min(index_offset + index_count, static_cast<uint32_t>(mesh.indices.size()));
     for (size_t i = index_offset; i < end_idx; i += step) {
         

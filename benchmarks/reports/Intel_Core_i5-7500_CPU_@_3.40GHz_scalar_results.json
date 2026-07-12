@@ -1,6 +1,6 @@
 {
   "context": {
-    "date": "2026-07-01T16:52:50+02:00",
+    "date": "2026-07-12T17:06:59+02:00",
     "host_name": "alanglkPC",
     "executable": "./build/benchmarks/scalar/bin/bm_swr_opencv_rungholt",
     "num_cpus": 4,
@@ -32,24 +32,7 @@
         "num_sharing": 4
       }
     ],
-    "load_avg": [1.41406,1.15088,1.20508],
+    "load_avg": [2.58447,1.6499,1.5249],
     "library_build_type": "release"
   },
   "benchmarks": [
-    {
-      "name": "RungholtRenderFixture/BM_RenderFrames/iterations:1000",
-      "family_index": 0,
-      "per_family_instance_index": 0,
-      "run_name": "RungholtRenderFixture/BM_RenderFrames/iterations:1000",
-      "run_type": "iteration",
-      "repetitions": 1,
-      "repetition_index": 0,
-      "threads": 1,
-      "iterations": 1000,
-      "real_time": 4.2850721941903242e+02,
-      "cpu_time": 4.2725529987500022e+02,
-      "time_unit": "ms",
-      "FPS": 2.3405209959772639e+00
-    }
-  ]
-}

@@ -2,7 +2,7 @@
 #pragma once
 
 #include "RRL/rhi/software/SIMDTypes.hpp"
-#include "RRL/data/MeshData.hpp"
+#include "RRL/asset/MeshAsset.hpp"
 
 namespace rrl::rhi::software {
 
@@ -14,7 +14,7 @@ We will group data as tiles: blocks of SIMD_BIT_SIZE
 struct SWRMesh {
     static constexpr size_t BlockSize = RRL_SWR_SIMD_NUM_32BIT_ELMS;
 
-    rrl::data::MeshTopology topology;
+    rrl::asset::MeshTopology topology;
     size_t active_vertex_count { 0 };
 
     std::vector<uint32_t> indices;
@@ -29,7 +29,7 @@ struct SWRMesh {
     #endif
 
     // Defines submesh groups. 
-    std::vector<rrl::data::MeshSubmesh> submeshes;
+    std::vector<rrl::asset::MeshSubmesh> submeshes;
 };
 
 

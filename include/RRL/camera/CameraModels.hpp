@@ -1,6 +1,8 @@
 // RRL/include/camera/CameraModels.hpp
 #pragma once
 
+#include <RRL/rrl_export.h>
+
 #include <glm/glm.hpp>
 #include <variant>
 #include <vector>
@@ -10,7 +12,7 @@
 namespace rrl::camera {
 
 
-struct PerspectiveModel {
+struct RRL_API PerspectiveModel {
     float fov_y_radians { glm::radians(60.0f) };
     float aspect_ratio  { 16.0f / 9.0f };
     float z_near        { 0.1f };
@@ -18,7 +20,7 @@ struct PerspectiveModel {
 };
 
 
-struct OrthographicModel {
+struct RRL_API OrthographicModel {
     float width  { 10.0f };
     float height { 10.0f };
     float z_near { -100.0f };
@@ -26,7 +28,7 @@ struct OrthographicModel {
 };
 
 
-struct PinholeModel {
+struct RRL_API PinholeModel {
     float fx { 500.0f };
     float fy { 500.0f };
     float cx { 320.0f };

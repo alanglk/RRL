@@ -1,7 +1,7 @@
 // RRL/src/include/rhi/opengl/ShaderManager.hpp
 #pragma once
 #include "RRL/rhi/opengl/Shader.hpp"
-#include "RRL/data/MaterialData.hpp"
+#include "RRL/asset/MaterialAsset.hpp"
 
 
 #include <unordered_map>
@@ -13,7 +13,7 @@ namespace rrl::rhi::opengl {
 class ShaderManager {
 
     // Helper to map a shader file name into the correcponding statically defined shading model
-    static data::ShadingModel MapFilenameToShadingModel(const std::string& filename);
+    static rrl::asset::ShadingModel MapFilenameToShadingModel(const std::string& filename);
 public:
 
     static ShaderManager& I() {
@@ -29,14 +29,14 @@ public:
     void LoadShadersFromSource(); // Loads the embedded fallback shaders
     
     // Returns a raw pointer to the shader
-    Shader* GetShader(data::ShadingModel shading_model);
+    Shader* GetShader(rrl::asset::ShadingModel shading_model);
 
 private:
     ShaderManager() = default;
     ~ShaderManager() = default;
 
     // The manager owns the actual OpenGL programs
-    std::unordered_map<data::ShadingModel, std::unique_ptr<Shader>> loaded_shaders;
+    std::unordered_map<rrl::asset::ShadingModel, std::unique_ptr<Shader>> loaded_shaders;
 };
 
 

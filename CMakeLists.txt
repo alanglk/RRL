@@ -68,10 +68,14 @@ endif()
 
 
 # --- Installation Variables --------------------------------------
+include(GNUInstallDirs)
 if(RRL_IS_MASTER_PROJECT)
     # Install tree inside the build dir by default <build>/dist
+    # ONLY if we are not in a release build
     if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-      set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/dist" CACHE PATH "Install path" FORCE)
+        if(NOT CMAKE_BUILD_TYPE MATCHES "Release|MinSizeRel|RelWithDebInfo")
+            set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/dist" CACHE PATH "Install path" FORCE)
+        endif()
     endif()
 endif()
 
@@ -119,26 +123,46 @@ list(APPEND RRL_PUBLIC_COMPILE_DEFS
 
 # --- Library Sources ---------------------------------------------
 set(RRL_SOURCES
+
+    # Asset functions implementations
+    src/asset/AssetManager.cpp
+    src/asset/SynchronizationSystems.cpp
+
+    # Camera functions implementations
+    src/camera/CameraSystem.cpp
+
+    # RHI API main implementation
+    src/rhi/RHI.cpp
+
+    # Scene functions implementations
+    src/scene/PrefabManager.cpp
+
+    # TF functions implementations
     src/tf/TransformTree.cpp
     src/tf/TFComponents.cpp
 
-    src/camera/CameraSystem.cpp
-
+    # IO functions implementations
     src/io/PrefabIO.cpp
     src/io/ImageIO.cpp
 
-    src/data/AssetManager.cpp
-    src/data/SynchronizationSystems.cpp
 
-    src/scene/SceneManager.cpp
-
-    src/rhi/RHI.cpp
-    
-    src/debug/TFDebugger.cpp
-    src/debug/AssetManagerDebugger.cpp
-    src/debug/SceneManagerDebugger.cpp
+    # Debugging functions
+    src/debug/AssetDebugger.cpp
     src/debug/RHIDebugger.cpp
+    src/debug/SceneDebugger.cpp
+    src/debug/TFDebugger.cpp
 
+
+    # Publi API Facades
+    src/modules/AssetModule.cpp
+    src/modules/CameraModule.cpp
+    src/modules/DebugModule.cpp
+    src/modules/RHIModule.cpp
+    src/modules/SceneModule.cpp
+    src/modules/TFModule.cpp
+
+    # RRL Engine object
+    src/core/RRLEngine.cpp
 )
 
 # --- Library Private Base Includes -------------------------------
@@ -156,7 +180,7 @@ set(ENTT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/entt")
 if(EXISTS "${ENTT_DIR}/CMakeLists.txt")
     set(ENTT_INSTALL OFF CACHE BOOL "" FORCE) # Prevents EnTT overrides on install variables
     add_subdirectory(${ENTT_DIR} "${CMAKE_CURRENT_BINARY_DIR}/entt" EXCLUDE_FROM_ALL)
-    list(APPEND RRL_PUBLIC_LIBRARIES $<BUILD_INTERFACE:EnTT::EnTT>)
+    list(APPEND RRL_PRIVATE_LIBRARIES $<BUILD_INTERFACE:EnTT::EnTT>)
 else()
     message(FATAL_ERROR "EnTT source missing at ${ENTT_DIR}. Have you called 'git submodule update --init --recursive'?")
 endif()
@@ -305,17 +329,23 @@ if (RRL_BUILD_WINDOW_GLFW AND RRL_BUILD_BACKEND_OPENGL)
     )
     
     # Shader configuration
+    # If we are building at Release mode 
+    #       -> shaders will be installed at:
+    #           <system_install_dir>/RRL/shaders
+    # If we are building on other mode:
+    #       -> shaders will be installed at:
+    #           <this_install_dir>/RRL/shaders
+    #
     if (RRL_OPENGL_EMBED_SHADERS)
         message(STATUS "RRL [Hardware RHI]: Compiling with embedded shaders.")
         list(APPEND RRL_PRIVATE_COMPILE_DEFS RRL_OPENGL_EMBED_SHADERS)
     else()
         message(STATUS "RRL [Hardware RHI]: Compiling with external runtime shaders.")
-        if(CMAKE_BUILD_TYPE STREQUAL "Release")
-            set(SHADER_BAKE_PATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/RRL/shaders")
+        if(CMAKE_BUILD_TYPE MATCHES "Release|MinSizeRel|RelWithDebInfo")
+            set(SHADER_BAKE_PATH "${CMAKE_INSTALL_FULL_DATADIR}/RRL/shaders")
         else()
             set(SHADER_BAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src/rhi/opengl/shaders")
         endif()
-
         list(APPEND RRL_PRIVATE_COMPILE_DEFS 
             RRL_OPENGL_RUNTIME_SHADER_DIR="${SHADER_BAKE_PATH}"
         )
@@ -394,8 +424,6 @@ endif()
 
 
 # --- Install -----------------------------------------------------
-include(GNUInstallDirs)
-
 # Install Core Targets
 install(
   TARGETS rrl
@@ -422,8 +450,7 @@ endif()
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-# Install Public Dependency Headers (EnTT & GLM)
-install(DIRECTORY "${ENTT_DIR}/src/entt" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+# Install Public Dependency Headers (GLM)
 install(DIRECTORY "${GLM_DIR}/glm" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h" PATTERN "*.inl")
 
 # Install Shaders (if not embedded)
@@ -473,6 +500,8 @@ if(RRL_IS_MASTER_PROJECT)
     set(CPACK_PACKAGE_NAME "RRL")
     set(CPACK_PACKAGE_VENDOR "alanglk")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Robotics Rendering Library (RRL)")
+    
+    set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
     
     set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
     set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})

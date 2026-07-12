@@ -1,10 +1,9 @@
 // RRL/src/rhi/RHI.cpp
 
 #include "RRL/rhi/RHI.hpp"
-#include "RRL/rhi/RHI_Internal.hpp"
 #include "RRL/rhi/RHIBackendManager.hpp"
 
-#include "RRL/data/SynchronizationSystems.hpp"
+#include "RRL/asset/SynchronizationSystems.hpp"
 
 #include <FLogging/FLogging.hpp>
 #include "RRL/DebugMacros.hpp"
@@ -185,9 +184,9 @@ void Shutdown(entt::registry& registry) {
     RHIBackendManager::Instance().Reset(); // Reset backend to NONE
 }
 void SyncResources(entt::registry& registry) {
-    data::SyncTexturesToRHI(registry);
-    data::SyncMeshesToRHI(registry);
-    data::SyncMaterialsToRHI(registry);
+    rrl::asset::SyncTexturesToRHI(registry);
+    rrl::asset::SyncMeshesToRHI(registry);
+    rrl::asset::SyncMaterialsToRHI(registry);
 }
 void RenderFrame(entt::registry& registry) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
@@ -214,12 +213,12 @@ void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle handle) {
 }
 
 // --- Textures ----------------------------------------------------
-TextureHandle CreateTexture(entt::registry& registry, const data::ImageData& image_data) {
+TextureHandle CreateTexture(entt::registry& registry, const rrl::asset::ImageAsset& image_data) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
     RRL_ASSERT(backend.CreateTexture != nullptr, "RHI CreateTexture called but no backend is loaded!");
     return backend.CreateTexture(registry, image_data);
 }
-void UpdateTexture(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) {
+void UpdateTexture(entt::registry& registry, TextureHandle handle, const rrl::asset::ImageAsset& image_data) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
     RRL_ASSERT(backend.UpdateTexture != nullptr, "RHI UpdateTexture called but no backend is loaded!");
     backend.UpdateTexture(registry, handle, image_data);
@@ -233,13 +232,13 @@ void DestroyTexture(entt::registry& registry, TextureHandle handle) {
 
 
 // --- Meshes ------------------------------------------------------
-MeshHandle CreateMesh(entt::registry& registry, const data::MeshData& mesh_data) {
+MeshHandle CreateMesh(entt::registry& registry, const rrl::asset::MeshAsset& mesh_data) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
     RRL_ASSERT(backend.CreateMesh != nullptr, "RHI CreateMesh called but no backend is loaded!");
     return backend.CreateMesh(registry, mesh_data);
 }
 
-void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::MeshData& mesh_data) {
+void UpdateMesh(entt::registry& registry, MeshHandle handle, const rrl::asset::MeshAsset& mesh_data) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
     RRL_ASSERT(backend.UpdateMesh != nullptr, "RHI UpdateMesh called but no backend is loaded!");
     backend.UpdateMesh(registry, handle, mesh_data);
@@ -254,12 +253,12 @@ void DestroyMesh(entt::registry& registry, MeshHandle handle) {
 
 
 // --- Materials ---------------------------------------------------
-MaterialHandle CreateMaterial(entt::registry& registry, const data::MaterialData& material_data) {
+MaterialHandle CreateMaterial(entt::registry& registry, const rrl::asset::MaterialAsset& material_data) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
     RRL_ASSERT(backend.CreateMaterial != nullptr, "RHI CreateMaterial called but no backend is loaded!");
     return backend.CreateMaterial(registry, material_data);
 }
-void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data) {
+void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const rrl::asset::MaterialAsset& material_data) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
     RRL_ASSERT(backend.UpdateMaterial != nullptr, "RHI UpdateMaterial called but no backend is loaded!");
     backend.UpdateMaterial(registry, handle, material_data);
@@ -273,12 +272,12 @@ void DestroyMaterial(entt::registry& registry, MaterialHandle handle) {
 
 
 // --- Retrieve Rendered Data --------------------------------------
-data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
+rrl::asset::ImageAsset GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
     auto& backend = RHIBackendManager::Instance().GetBackend();
     if (backend.GetTargetImage != nullptr) {
         return backend.GetTargetImage(registry, handle);
     }
-    return data::ImageData{}; // Return empty image
+    return rrl::asset::ImageAsset{}; // Return empty image
 }
 void Present(entt::registry& registry) {
     auto& backend = RHIBackendManager::Instance().GetBackend();

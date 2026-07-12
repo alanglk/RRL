@@ -1,10 +1,14 @@
 // RRL/src/include/rhi/RHIBackend.hpp
 #pragma once
 
+#include <entt/entt.hpp>
 
-#include "RRL/rhi/RHI.hpp"
-#include "RRL/data/MeshData.hpp"
-#include "RRL/data/MaterialData.hpp"
+#include "RRL/rhi/RHITypes.hpp"
+
+#include "RRL/asset/ImageAsset.hpp"
+#include "RRL/asset/MeshAsset.hpp"
+#include "RRL/asset/MaterialAsset.hpp"
+
 
 
 namespace rrl::rhi {
@@ -39,25 +43,25 @@ struct RHIBackend {
     void (*DestroyRenderTarget)(entt::registry& registry, RenderTargetHandle handle) { nullptr };
 
     // Textures
-    TextureHandle (*CreateTexture)(entt::registry& registry, const data::ImageData& image_data) { nullptr };
-    void (*UpdateTexture)(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) { nullptr };
+    TextureHandle (*CreateTexture)(entt::registry& registry, const rrl::asset::ImageAsset& image_data) { nullptr };
+    void (*UpdateTexture)(entt::registry& registry, TextureHandle handle, const rrl::asset::ImageAsset& image_data) { nullptr };
     void (*DestroyTexture)(entt::registry& registry, TextureHandle handle) { nullptr };
     
     // Meshes
-    MeshHandle (*CreateMesh)(entt::registry& registry, const data::MeshData& mesh_data) { nullptr };
-    void (*UpdateMesh)(entt::registry& registry, MeshHandle handle, const data::MeshData& mesh_data) { nullptr };
+    MeshHandle (*CreateMesh)(entt::registry& registry, const rrl::asset::MeshAsset& mesh_data) { nullptr };
+    void (*UpdateMesh)(entt::registry& registry, MeshHandle handle, const rrl::asset::MeshAsset& mesh_data) { nullptr };
     void (*DestroyMesh)(entt::registry& registry, MeshHandle handle) { nullptr };
 
 
     // Materials
-    MaterialHandle (*CreateMaterial)(entt::registry& registry, const data::MaterialData& material_data) { nullptr };
-    void (*UpdateMaterial)(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data) { nullptr };
+    MaterialHandle (*CreateMaterial)(entt::registry& registry, const rrl::asset::MaterialAsset& material_data) { nullptr };
+    void (*UpdateMaterial)(entt::registry& registry, MaterialHandle handle, const rrl::asset::MaterialAsset& material_data) { nullptr };
     void (*DestroyMaterial)(entt::registry& registry, MaterialHandle handle) { nullptr };
 
 
     // Presentation
     // Reads rendered data from the RHI back to CPU RAM
-    data::ImageData (*GetTargetImage)(entt::registry& registry, RenderTargetHandle handle) { nullptr };
+    rrl::asset::ImageAsset (*GetTargetImage)(entt::registry& registry, RenderTargetHandle handle) { nullptr };
     // Asks the backend to swap its TARGET_MAIN buffer to the attached window
     void (*Present)(entt::registry& registry) { nullptr };
     // Alert the backend that the used window (also headless dummy window) has been destroyed

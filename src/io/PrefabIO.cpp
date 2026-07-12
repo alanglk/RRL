@@ -18,12 +18,12 @@
 #include <tiny_obj_loader.h>
 
 
-using namespace rrl::data;
+using namespace rrl::asset;
 namespace fs = std::filesystem;
 
 
 // Hash to combine v/vt/vn into a single index: 
-//  .obj indices -> MeshData indices
+//  .obj indices -> MeshAsset indices
 struct VertexTuple {
     int v, vt, vn;
     bool operator==(const VertexTuple& other) const {
@@ -124,7 +124,7 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
         // Changed IOShape to IONode
         IONode parsed_node; 
         parsed_node.name = tiny_shape.name;
-        parsed_node.mesh.topology = data::MeshTopology::TRIANGLES;
+        parsed_node.mesh.topology = rrl::asset::MeshTopology::TRIANGLES;
 
 
         std::transform(parsed_node.name.begin(), parsed_node.name.end(), parsed_node.name.begin(), ::tolower);

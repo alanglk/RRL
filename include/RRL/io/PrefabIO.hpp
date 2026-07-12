@@ -1,8 +1,10 @@
 // RRL/include/io/PrefabIO.hpp
 #pragma once
 
-#include "RRL/data/MeshData.hpp"
-#include "RRL/data/MaterialData.hpp"
+#include <RRL/rrl_export.h>
+
+#include "RRL/asset/MeshAsset.hpp"
+#include "RRL/asset/MaterialAsset.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -16,9 +18,9 @@ namespace rrl::io {
 /**
  * @brief File loaded material. This contains references for calling io::LoadImage().
  */
-struct IOMaterial {
+struct RRL_API IOMaterial {
     std::string name;       // Material name from the parsed file
-    data::MaterialData material_parameters; // only fills static values
+    rrl::asset::MaterialAsset material_parameters; // only fills static values
     std::string albedo_path;
     std::string normal_path;
     std::string metallic_roughness_path;
@@ -28,9 +30,9 @@ struct IOMaterial {
 /**
  * @brief A file-loaded hierarchical node (can contain a mesh, a transform, and children).
  */
-struct IONode {
+struct RRL_API IONode {
     std::string name;       // Mesh node name for instancing / identification
-    data::MeshData mesh;    // Node mesh (can be empty if it's just a transform group)
+    rrl::asset::MeshAsset mesh;    // Node mesh (can be empty if it's just a transform group)
     
     // Maps 1:1 with mesh.submeshes. Stores the parsed string names of the materials.
     std::vector<std::string> submesh_material_names;
@@ -47,7 +49,7 @@ struct IONode {
 /**
  * @brief File loaded complete scene (hierarchy and materials)
  */
-struct IOPrefab {
+struct RRL_API IOPrefab {
     std::string filepath; // for caching
     std::vector<IOMaterial> materials;
     std::vector<IONode> root_nodes; // hierarchy
@@ -60,7 +62,7 @@ struct IOPrefab {
  * Supported formats:
  *  - .obj
  */
-IOPrefab LoadPrefab(const std::string& filepath);
+IOPrefab RRL_API LoadPrefab(const std::string& filepath);
 
 
 

@@ -6,7 +6,7 @@
 #include "RRL/rhi/RHIBackendManager.hpp"
 
 #include "RRL/tf/TransformTree.hpp"
-#include "RRL/data/AssetManager.hpp"
+#include "RRL/asset/AssetManager.hpp"
 #include "RRL/camera/CameraSystem.hpp"
 
 
@@ -16,23 +16,23 @@ namespace rrl::debug::rhi {
 
 // --- Helpers -----------------------------------------------------
 static entt::entity GetOrCreateWireframeDebugMaterial(entt::registry& registry) {
-    data::MaterialID mat_id = "debug_wireframe_mat";
-    entt::entity mat = data::GetCachedMaterial(registry, mat_id);
+    rrl::asset::MaterialID mat_id = "debug_wireframe_mat";
+    entt::entity mat = rrl::asset::GetCachedMaterial(registry, mat_id);
     if (mat != entt::null) return mat;
     
-    data::MaterialData debug_mat;
+    rrl::asset::MaterialAsset debug_mat;
     debug_mat.base_color = glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
-    return data::CreateMaterial(registry, mat_id, debug_mat);
+    return rrl::asset::CreateMaterial(registry, mat_id, debug_mat);
 }
-static data::MeshData CreatePerspectiveCameraMesh(const camera::PerspectiveModel& model, float visual_length) {
+static rrl::asset::MeshAsset CreatePerspectiveCameraMesh(const camera::PerspectiveModel& model, float visual_length) {
     float h_near    = model.z_near * std::tan(model.fov_y_radians * 0.5f);
     float w_near    = h_near * model.aspect_ratio;
     float h_far     = visual_length * std::tan(model.fov_y_radians * 0.5f);
     float w_far     = h_far * model.aspect_ratio;
 
     // ISO 8855 Vertices (+X Forward, +Y Left, +Z Up)
-    data::MeshData frustum_mesh;
-    frustum_mesh.topology = data::MeshTopology::LINES;
+    rrl::asset::MeshAsset frustum_mesh;
+    frustum_mesh.topology = rrl::asset::MeshTopology::LINES;
     frustum_mesh.positions = {
         // Near Plane (X = z_near)
         {model.z_near,  w_near,  h_near}, // 0: Top-Left
@@ -95,8 +95,8 @@ entt::entity SpawnCameraFrustum(entt::registry& registry, entt::entity camera_en
     
 
     // Register the Asset
-    data::MeshID mesh_id = "debug_frustum_" + std::to_string(static_cast<uint32_t>(camera_entity));
-    entt::entity mesh_asset = data::CreateMesh(registry, mesh_id, std::move(frustum_mesh));
+    rrl::asset::MeshID mesh_id = "debug_frustum_" + std::to_string(static_cast<uint32_t>(camera_entity));
+    entt::entity mesh_asset = rrl::asset::CreateMesh(registry, mesh_id, std::move(frustum_mesh));
 
     // Fetch the debug material
     entt::entity debug_mat = GetOrCreateWireframeDebugMaterial(registry);
@@ -107,12 +107,12 @@ entt::entity SpawnCameraFrustum(entt::registry& registry, entt::entity camera_en
     tf::AttachChild(registry, camera_entity, frustum_entity, tf::TFDependencyPolicy::CASCADE_DELETE);
     
     // Bind to the debug layer
-    data::BindMesh(registry, frustum_entity, mesh_asset, { debug_mat }, rrl::rhi::RHIRenderLayer::LAYER_DEBUG);
+    rrl::asset::BindMesh(registry, frustum_entity, mesh_asset, { debug_mat }, rrl::rhi::RHIRenderLayer::LAYER_DEBUG);
     return frustum_entity;
 }
 entt::entity SpawnDebugGrid(entt::registry& registry, float size, int subdivisions) {
-    data::MeshData grid_mesh;
-    grid_mesh.topology = data::MeshTopology::LINES;
+    rrl::asset::MeshAsset grid_mesh;
+    grid_mesh.topology = rrl::asset::MeshTopology::LINES;
 
     float half_size = size / 2.0f;
     float step = size / static_cast<float>(subdivisions);
@@ -134,14 +134,14 @@ entt::entity SpawnDebugGrid(entt::registry& registry, float size, int subdivisio
         grid_mesh.indices.push_back(idx++);
     }
 
-    entt::entity mesh_asset = data::CreateMesh(registry, "debug_grid", std::move(grid_mesh));
+    entt::entity mesh_asset = rrl::asset::CreateMesh(registry, "debug_grid", std::move(grid_mesh));
     entt::entity debug_mat = GetOrCreateWireframeDebugMaterial(registry);
 
     entt::entity grid_entity = registry.create();
     tf::AddTransform(registry, grid_entity);
     
     // Bind to the debug layer
-    data::BindMesh(registry, grid_entity, mesh_asset, { debug_mat }, rrl::rhi::RHIRenderLayer::LAYER_DEBUG);
+    rrl::asset::BindMesh(registry, grid_entity, mesh_asset, { debug_mat }, rrl::rhi::RHIRenderLayer::LAYER_DEBUG);
     return grid_entity;
 }
 

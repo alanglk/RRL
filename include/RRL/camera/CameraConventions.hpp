@@ -1,6 +1,7 @@
 // RRL/include/camera/CameraConventions.hpp
 #pragma once
 
+#include <RRL/rrl_export.h>
 #include <cstdint>
 
 namespace rrl::camera {
@@ -26,7 +27,7 @@ enum class NDCYDirection : uint8_t {
  *  This is used by the automatic camera system to adapt the generated projection 
  *  matrices to the active rendering backend.
  */
-struct NDCConvention {
+struct RRL_API NDCConvention {
     NDCDepth depth_range;
     NDCYDirection y_direction;
 

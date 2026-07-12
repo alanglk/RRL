@@ -7,13 +7,13 @@
 namespace rrl::rhi::software {
 
 void RasterizeTriangle(
-    rrl::data::ImageData& render_target, rrl::data::ImageData& depth_buffer, 
+    rrl::asset::ImageAsset& render_target, rrl::asset::ImageAsset& depth_buffer, 
     const glm::vec4& v0, const glm::vec4& v1, const glm::vec4& v2, 
     const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2, 
     const glm::vec2& uv0, const glm::vec2& uv1, const glm::vec2& uv2, 
     const glm::vec4& c0, const glm::vec4& c1, const glm::vec4& c2, 
     float iw0, float iw1, float iw2,
-    const glm::vec4& mat_base_color, const rrl::data::ImageData* active_albedo,
+    const glm::vec4& mat_base_color, const rrl::asset::ImageAsset* active_albedo,
     const ColorFormatCache& rt_format, const ColorFormatCache& tex_format,
     bool disable_textures, bool show_uvs, bool runtime_affine_override 
 ) {

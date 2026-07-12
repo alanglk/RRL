@@ -1,7 +1,11 @@
 // RRL/src/debug/TFDebugger.cpp
 
 #include "RRL/debug/TFDebugger.hpp"
+#include "RRL/RRLTypes.hpp"
 #include "RRL/tf/TFComponents.hpp"
+
+#include "RRL/EnttCasting.hpp"
+
 
 namespace rrl::debug::tf {
 
@@ -11,14 +15,14 @@ static TFNodeDebugStats BuildNodeStatsRecursive(
     entt::registry& registry, 
     entt::entity current_entity, 
     std::unordered_set<entt::entity>& visited,
-    std::vector<entt::entity>& cyclical_nodes) 
+    std::vector<ObjectID>& cyclical_nodes) 
 {
     TFNodeDebugStats stats;
-    stats.entity_id = current_entity;
+    stats.object_id = ToObjectID(current_entity);
 
     // If we have already visited the node -> cyclical tree
     if (visited.count(current_entity)) {
-        cyclical_nodes.push_back(current_entity);
+        cyclical_nodes.push_back( ToObjectID(current_entity) );
         return stats; 
     }
     visited.insert(current_entity);
@@ -65,7 +69,7 @@ TFDebugReport GetTransformTreeDebugReport(entt::registry& registry) {
     for (auto entity : view) {
         // (A valid TF node must have all 3 components: Relation, World and Local)
         if (!registry.all_of<rrl::tf::TFLocalTransformComponent, rrl::tf::TFWorldTransformComponent>(entity)) {
-            report.malformed_nodes.push_back(entity);
+            report.malformed_nodes.push_back( ToObjectID(entity) );
             continue;
         }
 
@@ -81,9 +85,7 @@ TFDebugReport GetTransformTreeDebugReport(entt::registry& registry) {
     // Catch detached cyclical graphs (Loops that have no root node at all)
     for (auto entity : view) {
         if (!visited.count(entity) && 
-            std::find(report.malformed_nodes.begin(), report.malformed_nodes.end(), entity) == report.malformed_nodes.end()) {
-            
-            // If it hasn't been visited by the root traversal and isn't malformed, it's trapped in a floating loop.
+            std::find(report.malformed_nodes.begin(), report.malformed_nodes.end(), ToObjectID(entity)) == report.malformed_nodes.end()) {
             report.root_nodes.push_back(BuildNodeStatsRecursive(registry, entity, visited, report.cyclical_nodes));
         }
     }

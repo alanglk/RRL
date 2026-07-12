@@ -3,14 +3,14 @@
 
 // Runtime components
 #include "RRL/camera/CameraComponents.hpp"
-#include "RRL/data/MeshData.hpp"
+#include "RRL/asset/MeshAsset.hpp"
 #include "RRL/tf/TFComponents.hpp"
-#include "RRL/data/TextureComponents.hpp"
-#include "RRL/data/MeshComponents.hpp"
-#include "RRL/data/MaterialComponents.hpp"
+#include "RRL/asset/TextureComponents.hpp"
+#include "RRL/asset/MeshComponents.hpp"
+#include "RRL/asset/MaterialComponents.hpp"
 
 
-#include "RRL/data/ImageData.hpp"
+#include "RRL/asset/ImageAsset.hpp"
 #include "RRL/rhi/RHIBackend.hpp"
 #include "RRL/rhi/opengl/ShaderManager.hpp"
 
@@ -77,7 +77,7 @@ struct GLMesh {
     uint32_t vertex_capacity = 0;
     uint32_t index_capacity = 0;
 
-    std::vector<data::MeshSubmesh> submeshes;
+    std::vector<rrl::asset::MeshSubmesh> submeshes;
     GLenum topology = GL_TRIANGLES;
 };
 
@@ -129,11 +129,11 @@ struct OpenGLContext {
 
 
 // Helper to map RRL topology to OpenGL
-static GLenum MapTopology(data::MeshTopology topology) {
+static GLenum MapTopology(rrl::asset::MeshTopology topology) {
     switch (topology) {
-        case data::MeshTopology::POINTS: return GL_POINTS;
-        case data::MeshTopology::LINES: return GL_LINES;
-        case data::MeshTopology::TRIANGLES: return GL_TRIANGLES;
+        case rrl::asset::MeshTopology::POINTS: return GL_POINTS;
+        case rrl::asset::MeshTopology::LINES: return GL_LINES;
+        case rrl::asset::MeshTopology::TRIANGLES: return GL_TRIANGLES;
         default: return GL_TRIANGLES;
     }
 }
@@ -272,7 +272,7 @@ static void RenderFrame(entt::registry& registry) {
     
     // Lambda to actually bind a shader by its name
     Shader* active_shader = nullptr;
-    auto bind_shader = [&](data::ShadingModel model) -> Shader* {
+    auto bind_shader = [&](rrl::asset::ShadingModel model) -> Shader* {
         Shader* target = ShaderManager::I().GetShader(model);
         if (target) {
             if (target != active_shader) {
@@ -285,7 +285,7 @@ static void RenderFrame(entt::registry& registry) {
     };
 
     // 3D Scene Rendering
-    auto mesh_view = registry.view<tf::TFWorldTransformComponent, data::MeshLinkage>();
+    auto mesh_view = registry.view<tf::TFWorldTransformComponent, rrl::asset::MeshLinkage>();
     auto cam_view = registry.view<camera::CameraComponent, camera::CameraRuntimeComponent>();
     for (auto cam_entity : cam_view) {
         const auto& cam = cam_view.get<camera::CameraComponent>(cam_entity);
@@ -301,13 +301,13 @@ static void RenderFrame(entt::registry& registry) {
         glViewport(0, 0, target_it->second.width, target_it->second.height);
 
         for (auto physical_entity : mesh_view) {
-            const auto& linkage = mesh_view.get<data::MeshLinkage>(physical_entity);
+            const auto& linkage = mesh_view.get<rrl::asset::MeshLinkage>(physical_entity);
             const auto& world_tf = mesh_view.get<tf::TFWorldTransformComponent>(physical_entity);
             
-            if (!registry.valid(linkage.mesh_asset) || !registry.all_of<data::MeshRuntimeComponent>(linkage.mesh_asset)) continue;
+            if (!registry.valid(linkage.mesh_asset) || !registry.all_of<rrl::asset::MeshRuntimeComponent>(linkage.mesh_asset)) continue;
             if ((cam.culling_mask & linkage.layer_mask) == rhi::RHIRenderLayer::LAYER_NONE) continue;
 
-            MeshHandle mesh_handle = registry.get<data::MeshRuntimeComponent>(linkage.mesh_asset).handle;
+            MeshHandle mesh_handle = registry.get<rrl::asset::MeshRuntimeComponent>(linkage.mesh_asset).handle;
             if (ctx.meshes.find(mesh_handle) == ctx.meshes.end()) continue;
             const GLMesh& gl_mesh = ctx.meshes[mesh_handle];
 
@@ -316,7 +316,7 @@ static void RenderFrame(entt::registry& registry) {
 
             // Point Clouds (LiDAR)
             if (gl_mesh.topology == GL_POINTS) {
-                Shader* pc_shader = bind_shader(data::ShadingModel::POINT_CLOUD);
+                Shader* pc_shader = bind_shader(rrl::asset::ShadingModel::POINT_CLOUD);
                 if (pc_shader) {
                     pc_shader->SetMat4("u_MVP", mvp);
                     glDrawArrays(gl_mesh.topology, 0, gl_mesh.vertex_count);
@@ -325,8 +325,8 @@ static void RenderFrame(entt::registry& registry) {
             }
 
             // Triangles / Lines
-            std::vector<data::MeshSubmesh> default_submesh = {{0, gl_mesh.index_count}};
-            const std::vector<data::MeshSubmesh>& active_submeshes = gl_mesh.submeshes.empty() ? default_submesh : gl_mesh.submeshes;
+            std::vector<rrl::asset::MeshSubmesh> default_submesh = {{0, gl_mesh.index_count}};
+            const std::vector<rrl::asset::MeshSubmesh>& active_submeshes = gl_mesh.submeshes.empty() ? default_submesh : gl_mesh.submeshes;
             for (size_t i = 0; i < active_submeshes.size(); ++i) {
                 const auto& submesh = active_submeshes[i];
 
@@ -335,9 +335,9 @@ static void RenderFrame(entt::registry& registry) {
                 if (i < linkage.materials.size()) {
                     mat_entity = linkage.materials[i];
                 }
-                auto shading_model = data::ShadingModel::UNLIT; 
-                if (registry.valid(mat_entity) && registry.all_of<data::MaterialSourceComponent>(mat_entity)) {
-                    shading_model = registry.get<data::MaterialSourceComponent>(mat_entity).data.shading_model;
+                auto shading_model = rrl::asset::ShadingModel::UNLIT; 
+                if (registry.valid(mat_entity) && registry.all_of<rrl::asset::MaterialSourceComponent>(mat_entity)) {
+                    shading_model = registry.get<rrl::asset::MaterialSourceComponent>(mat_entity).data.shading_model;
                 }
         
                 Shader* mat_shader = bind_shader(shading_model);
@@ -345,8 +345,8 @@ static void RenderFrame(entt::registry& registry) {
                 
                 mat_shader->SetMat4("u_MVP", mvp);
 
-                if (registry.valid(mat_entity) && registry.all_of<data::MaterialRuntimeComponent>(mat_entity)) {
-                    const auto& mat_rt = registry.get<data::MaterialRuntimeComponent>(mat_entity);
+                if (registry.valid(mat_entity) && registry.all_of<rrl::asset::MaterialRuntimeComponent>(mat_entity)) {
+                    const auto& mat_rt = registry.get<rrl::asset::MaterialRuntimeComponent>(mat_entity);
                     
                     auto mat_it = ctx.materials.find(mat_rt.handle);
                     if (mat_it != ctx.materials.end()) {
@@ -378,20 +378,20 @@ static void RenderFrame(entt::registry& registry) {
     glEnable(GL_BLEND);       
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    Shader* ui_shader = bind_shader(data::ShadingModel::UI2D);
+    Shader* ui_shader = bind_shader(rrl::asset::ShadingModel::UI2D);
     if (ui_shader) {
         static GLuint empty_vao = 0;
         if (empty_vao == 0) glCreateVertexArrays(1, &empty_vao);
         glBindVertexArray(empty_vao);
 
-        auto ui_view = registry.view<data::TextureLinkage>();
+        auto ui_view = registry.view<rrl::asset::TextureLinkage>();
         for (auto ui_entity : ui_view) {
-            const auto& linkage = ui_view.get<data::TextureLinkage>(ui_entity);
+            const auto& linkage = ui_view.get<rrl::asset::TextureLinkage>(ui_entity);
             
-            if (!registry.valid(linkage.texture_asset) || !registry.all_of<data::TextureRuntimeComponent>(linkage.texture_asset)) continue;
+            if (!registry.valid(linkage.texture_asset) || !registry.all_of<rrl::asset::TextureRuntimeComponent>(linkage.texture_asset)) continue;
             if ((linkage.layer_mask & rhi::RHIRenderLayer::LAYER_UI) == rhi::RHIRenderLayer::LAYER_NONE) continue;
             
-            rhi::TextureHandle tex_handle = registry.get<data::TextureRuntimeComponent>(linkage.texture_asset).handle;
+            rhi::TextureHandle tex_handle = registry.get<rrl::asset::TextureRuntimeComponent>(linkage.texture_asset).handle;
             auto tex_it = ctx.textures.find(tex_handle);
             if (tex_it == ctx.textures.end()) continue;
 
@@ -459,7 +459,7 @@ static void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle han
 
 
 // --- Textures ----------------------------------------------------
-static void UpdateTexture(entt::registry& registry, TextureHandle handle, const data::ImageData& image_data) {
+static void UpdateTexture(entt::registry& registry, TextureHandle handle, const rrl::asset::ImageAsset& image_data) {
     if (!registry.ctx().contains<OpenGLContext>()) return;
     auto& ctx = registry.ctx().get<OpenGLContext>();
 
@@ -474,7 +474,7 @@ static void UpdateTexture(entt::registry& registry, TextureHandle handle, const 
     // Direct DMA transfer from System RAM to VRAM. 
     glTextureSubImage2D(tex.id, 0, 0, 0, tex.width, tex.height, tex.upload_format, tex.upload_type, image_data.data.data());
 }
-static TextureHandle CreateTexture(entt::registry& registry, const data::ImageData& image_data) {
+static TextureHandle CreateTexture(entt::registry& registry, const rrl::asset::ImageAsset& image_data) {
     RRL_ASSERT(registry.ctx().contains<OpenGLContext>(), "[OpenGL RHI] Backend not initialized!");
     auto& ctx = registry.ctx().get<OpenGLContext>();
     
@@ -488,22 +488,22 @@ static TextureHandle CreateTexture(entt::registry& registry, const data::ImageDa
     GLenum gl_internal_format = GL_RGB8;
     tex.upload_format = GL_RGB;
     tex.upload_type = GL_UNSIGNED_BYTE;
-    if (image_data.channels == data::ImageChannelLayout::CH_4) {
-        gl_internal_format = (image_data.data_type == data::ImageDataType::FLOAT32) ? GL_RGBA32F : GL_RGBA8;
-        tex.upload_format = (image_data.color_layout == data::ImageColorLayout::BGRA) ? GL_BGRA : GL_RGBA;
-    } else if (image_data.channels == data::ImageChannelLayout::CH_1) {
-        gl_internal_format = (image_data.data_type == data::ImageDataType::FLOAT32) ? GL_R32F : GL_R8;
+    if (image_data.channels == rrl::asset::ImageChannelLayout::CH_4) {
+        gl_internal_format = (image_data.data_type == rrl::asset::ImageAssetType::FLOAT32) ? GL_RGBA32F : GL_RGBA8;
+        tex.upload_format = (image_data.color_layout == rrl::asset::ImageColorLayout::BGRA) ? GL_BGRA : GL_RGBA;
+    } else if (image_data.channels == rrl::asset::ImageChannelLayout::CH_1) {
+        gl_internal_format = (image_data.data_type == rrl::asset::ImageAssetType::FLOAT32) ? GL_R32F : GL_R8;
         tex.upload_format = GL_RED;
     }
-    if (image_data.color_layout == data::ImageColorLayout::BGR) tex.upload_format = GL_BGR;
-    if (image_data.data_type == data::ImageDataType::FLOAT32) tex.upload_type = GL_FLOAT;
+    if (image_data.color_layout == rrl::asset::ImageColorLayout::BGR) tex.upload_format = GL_BGR;
+    if (image_data.data_type == rrl::asset::ImageAssetType::FLOAT32) tex.upload_type = GL_FLOAT;
 
     // Allocate Immutable VRAM Storage via DSA
     glCreateTextures(GL_TEXTURE_2D, 1, &tex.id);
     glTextureStorage2D(tex.id, 1, gl_internal_format, tex.width, tex.height);
     
     // Filtering for general 3D assets (can be bypassed for pure pixel-perfect UI later)
-    GLint gl_filter = (image_data.filter == data::ImageFilter::NEAREST) ? GL_NEAREST : GL_LINEAR;
+    GLint gl_filter = (image_data.filter == rrl::asset::ImageFilter::NEAREST) ? GL_NEAREST : GL_LINEAR;
     glTextureParameteri(tex.id, GL_TEXTURE_MIN_FILTER, gl_filter);
     glTextureParameteri(tex.id, GL_TEXTURE_MAG_FILTER, gl_filter);
     glTextureParameteri(tex.id, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -527,7 +527,7 @@ static void DestroyTexture(entt::registry& registry, TextureHandle handle) {
 
 
 // --- Meshes ------------------------------------------------------
-static MeshHandle CreateMesh(entt::registry& registry, const data::MeshData& mesh_data) {
+static MeshHandle CreateMesh(entt::registry& registry, const rrl::asset::MeshAsset& mesh_data) {
     RRL_ASSERT(registry.ctx().contains<OpenGLContext>(), "[OpenGL RHI] Backend not initialized!");
     auto& ctx = registry.ctx().get<OpenGLContext>();
     
@@ -595,7 +595,7 @@ static void DestroyMesh(entt::registry& registry, MeshHandle handle) {
         ctx.meshes.erase(it);
     }
 }
-static void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::MeshData& mesh_data) {
+static void UpdateMesh(entt::registry& registry, MeshHandle handle, const rrl::asset::MeshAsset& mesh_data) {
     if (!registry.ctx().contains<OpenGLContext>()) return;
     auto& ctx = registry.ctx().get<OpenGLContext>();
 
@@ -649,7 +649,7 @@ static void UpdateMesh(entt::registry& registry, MeshHandle handle, const data::
 
 
 // --- Materials ---------------------------------------------------
-static void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const data::MaterialData& material_data) {
+static void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const rrl::asset::MaterialAsset& material_data) {
     if (!registry.ctx().contains<OpenGLContext>()) return;
     auto& ctx = registry.ctx().get<OpenGLContext>();
 
@@ -667,7 +667,7 @@ static void UpdateMaterial(entt::registry& registry, MaterialHandle handle, cons
     // Direct DMA transfer to the VRAM buffer
     glNamedBufferSubData(gl_mat.ubo, 0, sizeof(MaterialUBOData), &ubo_data);
 }
-static MaterialHandle CreateMaterial(entt::registry& registry, const data::MaterialData& material_data) {
+static MaterialHandle CreateMaterial(entt::registry& registry, const rrl::asset::MaterialAsset& material_data) {
     RRL_ASSERT(registry.ctx().contains<OpenGLContext>(), "[OpenGL RHI] Backend not initialized!");
     auto& ctx = registry.ctx().get<OpenGLContext>();
 
@@ -695,7 +695,7 @@ static void DestroyMaterial(entt::registry& registry, MaterialHandle handle) {
 
 
 // --- Presentation ------------------------------------------------
-static data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
+static rrl::asset::ImageAsset GetTargetImage(entt::registry& registry, RenderTargetHandle handle) {
     RRL_ASSERT(registry.ctx().contains<OpenGLContext>(), "[OpenGL RHI] Backend not initialized!");
     auto& ctx = registry.ctx().get<OpenGLContext>();
 
@@ -704,13 +704,13 @@ static data::ImageData GetTargetImage(entt::registry& registry, RenderTargetHand
 
     const auto& rt = it->second;
 
-    data::ImageData img;
+    rrl::asset::ImageAsset img;
     img.width           = rt.width;
     img.height          = rt.height;
-    img.channels        = data::ImageChannelLayout::CH_3;
-    img.color_layout    = data::ImageColorLayout::RGB;
-    img.data_type       = data::ImageDataType::UINT8;
-    img.origin          = data::ImageOrigin::BOTTOM_LEFT;
+    img.channels        = rrl::asset::ImageChannelLayout::CH_3;
+    img.color_layout    = rrl::asset::ImageColorLayout::RGB;
+    img.data_type       = rrl::asset::ImageAssetType::UINT8;
+    img.origin          = rrl::asset::ImageOrigin::BOTTOM_LEFT;
     img.data.resize(rt.width * rt.height * 3);
 
     // DSA Pixel Read
@@ -730,18 +730,18 @@ static void Present(entt::registry& registry) {
         if (!win_name) return;
 
         // Fetch data from GPU
-        rrl::data::ImageData raw_img = GetTargetImage(registry, TARGET_MAIN);
+        rrl::asset::ImageAsset raw_img = GetTargetImage(registry, TARGET_MAIN);
         if (raw_img.data.empty()) return;
 
         // Wrap the raw buffer
         int cv_type = CV_8UC3;
-        if (raw_img.channels == rrl::data::ImageChannelLayout::CH_4) cv_type = CV_8UC4;
-        else if (raw_img.channels == rrl::data::ImageChannelLayout::CH_1) cv_type = CV_8UC1;
+        if (raw_img.channels == rrl::asset::ImageChannelLayout::CH_4) cv_type = CV_8UC4;
+        else if (raw_img.channels == rrl::asset::ImageChannelLayout::CH_1) cv_type = CV_8UC1;
         cv::Mat fbo_mat(raw_img.height, raw_img.width, cv_type, raw_img.data.data());
         cv::Mat ready_mat;
 
         // Coordinate origin flipping
-        if (raw_img.origin == rrl::data::ImageOrigin::BOTTOM_LEFT) {
+        if (raw_img.origin == rrl::asset::ImageOrigin::BOTTOM_LEFT) {
             cv::flip(fbo_mat, ready_mat, 0); // 0 = flip vertically
         } else {
             ready_mat = fbo_mat;
@@ -749,10 +749,10 @@ static void Present(entt::registry& registry) {
 
         // Color Space Conversion
         cv::Mat final_mat;
-        if (raw_img.color_layout == rrl::data::ImageColorLayout::RGB) {
+        if (raw_img.color_layout == rrl::asset::ImageColorLayout::RGB) {
             cv::cvtColor(ready_mat, final_mat, cv::COLOR_RGB2BGR);
         }
-        else if (raw_img.color_layout == rrl::data::ImageColorLayout::RGBA) {
+        else if (raw_img.color_layout == rrl::asset::ImageColorLayout::RGBA) {
             cv::cvtColor(ready_mat, final_mat, cv::COLOR_RGBA2BGRA);
         }
         else {

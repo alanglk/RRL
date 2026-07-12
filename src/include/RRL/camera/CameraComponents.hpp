@@ -4,7 +4,7 @@
 #include "RRL/camera/CameraConventions.hpp"
 #include "RRL/camera/CameraModels.hpp"
 
-#include "RRL/rhi/RHIBackend.hpp"
+#include "RRL/rhi/RHITypes.hpp"
 
 
 namespace rrl::camera {

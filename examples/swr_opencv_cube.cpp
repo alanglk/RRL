@@ -1,30 +1,25 @@
 // examples/swr_opencv_cube.cpp
 
-#include <entt/entt.hpp>
+#include "RRL/RRLTypes.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <vector>
-#include <chrono>
 #include <thread>
+#include <chrono>
+
 
 #include <FLogging/FLogging.hpp>
 
+
 // RRL Engine Modules
-#include "RRL/camera/CameraConventions.hpp"
-#include "RRL/data/AssetManager.hpp"
-#include "RRL/data/ImageData.hpp"
-#include "RRL/tf/TransformTree.hpp"
-#include "RRL/camera/CameraSystem.hpp"
-#include "RRL/data/MeshData.hpp"
-#include "RRL/rhi/RHI.hpp"
-#include "entt/entity/fwd.hpp"
+#include <RRL/RRLEngine.hpp>
 
 
 // Helper Function to Create a 3D Cube
-rrl::data::MeshData CreateWireframeCube(float size) {
-    rrl::data::MeshData mesh;
-    mesh.topology = rrl::data::MeshTopology::TRIANGLES;
+rrl::asset::MeshAsset CreateWireframeCube(float size) {
+    rrl::asset::MeshAsset mesh;
+    mesh.topology = rrl::asset::MeshTopology::TRIANGLES;
     float h = size * 0.5f;
 
     // 8 Corner Vertices of a Cube (ISO 8855 Coordinate System)
@@ -32,7 +27,7 @@ rrl::data::MeshData CreateWireframeCube(float size) {
         {-h, -h, -h}, { h, -h, -h}, { h,  h, -h}, {-h,  h, -h}, // Bottom 4 corners
         {-h, -h,  h}, { h, -h,  h}, { h,  h,  h}, {-h,  h,  h}  // Top 4 corners
     };
-
+    
     mesh.indices = {
         0, 2, 1,  0, 3, 2, // Bottom face
         4, 5, 6,  4, 6, 7, // Top face 
@@ -57,95 +52,84 @@ int main() {
     uint32_t ui_w           = 256;
     uint32_t ui_h           = 256;
 
-    // Initialize Systems
-    LOG_INFO("[RRL Engine] Booting subsystems...");
-    entt::registry registry;
-    rrl::tf::RegisterTFActions(registry);
-    rrl::data::InitializeAssetManager(registry);
-    rrl::rhi::RHIWindow main_window = rrl::rhi::CreateWindow(rrl::rhi::RHIWindowType::OPENCV);
-    rrl::rhi::InitializeWindow(main_window, "RRL - 3D Mesh + 2D UI", window_w, window_h);
-    if (!rrl::rhi::LoadBackend(rrl::rhi::RHIBackendType::SOFTWARE, registry)) {
-        LOG_ERROR("[RRL Engine] Failed to load RHI backend!");
-        return -1;
-    }
-    if (!rrl::rhi::Initialize(registry, &main_window)) {
-        LOG_ERROR("[RRL Engine] Failed to initialize RHI backend!");
-        return -1;
-    }
+    // Initialize Engine
+    LOG_INFO("[RRL Engine] Booting engine...");
+    rrl::Engine engine;
 
+    auto window = engine.rhi.CreateWindow(rrl::rhi::RHIWindowType::OPENCV);
+    engine.rhi.InitializeWindow(window, "RRL - 3D Mesh + 2D UI SOFTWARE", window_w, window_h);
+    engine.rhi.LoadBackend(rrl::rhi::RHIBackendType::SOFTWARE);
+    engine.rhi.Initialize(&window);
 
 
     // 3D Cube Creation
-    rrl::data::MaterialData unlit_blue;
-    unlit_blue.shading_model = rrl::data::ShadingModel::UNLIT;
-    unlit_blue.base_color = glm::vec4(0.2f, 0.6f, 1.0f, 1.0f); 
-    entt::entity cube_mat = rrl::data::CreateMaterial(registry, "blue_mat", unlit_blue);
+    rrl::asset::MaterialAsset unlit_blue;
+    unlit_blue.shading_model    = rrl::asset::ShadingModel::UNLIT;
+    unlit_blue.base_color       = glm::vec4(0.2f, 0.6f, 1.0f, 1.0f); 
+    rrl::AssetID blue_mat       = engine.asset.CreateMaterial("blue_mat", unlit_blue);
+    rrl::AssetID cube_mesh      = engine.asset.CreateMesh("cube_mesh", CreateWireframeCube(2.0f));
+    
+    rrl::ObjectID cube_obj      = engine.scene.SpawnObject();
+    engine.tf.AddTransform(cube_obj, glm::vec3(0.0f, 0.0f, 0.0f));
+    engine.asset.BindMesh(cube_obj, cube_mesh, {blue_mat});
 
-    entt::entity cube_asset = rrl::data::CreateMesh(registry, "cube_mesh", CreateWireframeCube(2.0f));
-    auto cube_obj = registry.create();
-    rrl::tf::AddTransform(registry, cube_obj, glm::vec3(0.0f, 0.0f, 0.0f));
-    rrl::data::BindMesh(registry, cube_obj, cube_asset, {cube_mat});
 
     // 2D UI Object Creation
-    rrl::data::ImageData ui_image;
+    rrl::asset::ImageAsset ui_image; // image model
     ui_image.width          = ui_w;
     ui_image.height         = ui_h;
-    ui_image.channels       = rrl::data::ImageChannelLayout::CH_3;
-    ui_image.color_layout   = rrl::data::ImageColorLayout::RGB;
-    ui_image.data_type      = rrl::data::ImageDataType::UINT8;
-    entt::entity ui_texture = rrl::data::CreateTexture(registry, "ui_image", std::move(ui_image));
-    entt::entity ui_obj     = registry.create();
-    rrl::data::BindUITexture(registry, ui_obj, ui_texture, 0.02f, 0.02f, 0.25f, 0.25f);
+    ui_image.channels       = rrl::asset::ImageChannelLayout::CH_3;
+    ui_image.color_layout   = rrl::asset::ImageColorLayout::RGB;
+    ui_image.data_type      = rrl::asset::ImageAssetType::UINT8;
+    rrl::AssetID ui_tex     = engine.asset.CreateTexture("ui_texture", std::move(ui_image));
+    rrl::ObjectID ui_obj    = engine.scene.SpawnObject();
+    engine.asset.BindUITexture(ui_obj, ui_tex, 0.02f, 0.02f, 0.25f, 0.25f);
+
 
     // Camera Setup
     rrl::camera::PerspectiveModel camera_model;
-    camera_model.fov_y_radians = glm::radians(60.0f);
-    camera_model.aspect_ratio = float(main_window.width) / float(main_window.height);
-    camera_model.z_near = 0.1f;
-    camera_model.z_far = 100.0f;
-    entt::entity main_camera = rrl::camera::SpawnCamera(registry, camera_model);
-    rrl::camera::SetCameraPositionAndLookAt(registry, main_camera, {-6.0f, 0.0f, 3.0f}, {0.0f, 0.0f, 0.0f});
+    camera_model.fov_y_radians  = glm::radians(60.0f);
+    camera_model.aspect_ratio   = float(window.width) / float(window.height);
+    camera_model.z_near         = 0.1f;
+    camera_model.z_far          = 100.0f;
+    rrl::ObjectID main_camera   = engine.camera.SpawnCamera(camera_model);
+    engine.camera.SetCameraPositionAndLookAt(main_camera, {-6.0f, 0.0f, 3.0f}, {0.0f, 0.0f, 0.0f});
 
 
     // Main loop
     LOG_INFO("[RRL Engine] Entering main loop...");
     float rotation_z = 0.0f;
-    while (true) {
+    
+    while (engine.rhi.PollWindowEvents(window)) {
 
         // 3D Cube Rotation Update
         rotation_z += 0.02f;
-        rrl::tf::SetLocalRotation(registry, cube_obj, glm::angleAxis(rotation_z, glm::vec3(0.0f, 0.0f, 1.0f)));
+        engine.tf.SetLocalRotation(cube_obj, glm::angleAxis(rotation_z, glm::vec3(0.0f, 0.0f, 1.0f)));
 
         // 2D UI Texture Update
-        rrl::data::ImageData dynamic_frame;
+        rrl::asset::ImageAsset dynamic_frame;
         dynamic_frame.width         = ui_w;
         dynamic_frame.height        = ui_h;
-        dynamic_frame.channels      = rrl::data::ImageChannelLayout::CH_3;
-        dynamic_frame.color_layout  = rrl::data::ImageColorLayout::RGB;
-        dynamic_frame.data_type     = rrl::data::ImageDataType::UINT8;
+        dynamic_frame.channels      = rrl::asset::ImageChannelLayout::CH_3;
+        dynamic_frame.color_layout  = rrl::asset::ImageColorLayout::RGB;
+        dynamic_frame.data_type     = rrl::asset::ImageAssetType::UINT8;
         dynamic_frame.data.resize(ui_w * ui_h * 3);
         uint8_t shift = static_cast<uint8_t>((std::sin(rotation_z) * 0.5f + 0.5f) * 255.0f);
         std::fill(dynamic_frame.data.begin(), dynamic_frame.data.end(), shift);
-        rrl::data::UpdateTexture(registry, ui_texture, std::move(dynamic_frame));
+        engine.asset.UpdateTexture(ui_tex, std::move(dynamic_frame));
 
 
         // Tick Engine Logic
-        rrl::tf::UpdateTransformTree(registry);
-        rrl::camera::UpdateCameras(registry, rrl::camera::NDC_OPENCV);
-        rrl::rhi::RenderFrame(registry);
-        rrl::rhi::PollWindowEvents(main_window); 
+        engine.tf.UpdateTransformTree();
+        engine.camera.UpdateCameras(rrl::camera::NDC_OPENCV);
+        engine.rhi.RenderFrame();
         
-
         // ~60 FPS main loop
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
-    // Cleanup
+    // Cleanup (engine handles its shutdown on its destructor)
     LOG_INFO("[RRL Engine] Shutting down...");
-    rrl::camera::DestroyAllCameras(registry);
-    rrl::data::DestroyAllAssets(registry);
-    rrl::rhi::Shutdown(registry);
-    rrl::rhi::DestroyWindow(registry, main_window);
     flogging::ResetLogger();
     return 0;
 }

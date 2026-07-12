@@ -1,8 +1,9 @@
-// RRL/src/rhi/RHIBackendManager.hpp
+// RRL/include/rhi/RHITypes.hpp
 #pragma once
 
-
+#include <RRL/rrl_export.h>
 #include <cstdint>
+
 
 namespace rrl::rhi {
 
@@ -61,7 +62,7 @@ enum class RHIBackendType : uint8_t {
 /**
  * @brief Generic OS Window Interface
  */
-struct RHIWindow {
+struct RRL_API RHIWindow {
     RHIWindowType type { RHIWindowType::HEADLESS };
     uint32_t width { 800 };
     uint32_t height { 600 };

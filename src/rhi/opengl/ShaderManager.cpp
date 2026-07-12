@@ -1,6 +1,6 @@
 #include "RRL/rhi/opengl/ShaderManager.hpp"
 
-#include "RRL/data/MaterialData.hpp"
+#include "RRL/asset/MaterialAsset.hpp"
 #include "RRL/rhi/opengl/EmbeddedShaders.hpp"
 
 #include <FLogging/FLogging.hpp>
@@ -12,23 +12,23 @@ namespace fs = std::filesystem;
 
 namespace rrl::rhi::opengl {
 
-data::ShadingModel ShaderManager::MapFilenameToShadingModel(const std::string& filename) {
+    rrl::asset::ShadingModel ShaderManager::MapFilenameToShadingModel(const std::string& filename) {
     std::string lower_name = filename;
     std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
 
     // System shaders
-    if (lower_name == "point_cloud") return data::ShadingModel::POINT_CLOUD;
-    if (lower_name == "ui2d" || lower_name == "ui") return data::ShadingModel::UI2D;
+    if (lower_name == "point_cloud") return rrl::asset::ShadingModel::POINT_CLOUD;
+    if (lower_name == "ui2d" || lower_name == "ui") return rrl::asset::ShadingModel::UI2D;
 
     // Material shaders
-    if (lower_name == "unlit")              return data::ShadingModel::UNLIT;
-    if (lower_name == "phong")              return data::ShadingModel::PHONG;
-    if (lower_name == "pbr")                return data::ShadingModel::PBR_OPAQUE;
-    if (lower_name == "pbr_opaque")         return data::ShadingModel::PBR_OPAQUE;
-    if (lower_name == "pbr_transparent")    return data::ShadingModel::PBR_TRANSPARENT;
+    if (lower_name == "unlit")              return rrl::asset::ShadingModel::UNLIT;
+    if (lower_name == "phong")              return rrl::asset::ShadingModel::PHONG;
+    if (lower_name == "pbr")                return rrl::asset::ShadingModel::PBR_OPAQUE;
+    if (lower_name == "pbr_opaque")         return rrl::asset::ShadingModel::PBR_OPAQUE;
+    if (lower_name == "pbr_transparent")    return rrl::asset::ShadingModel::PBR_TRANSPARENT;
     
     LOG_WARN("[ShaderManager] Unrecognized shader filename '{}'. Mapping to UNLIT by default.", filename);
-    return data::ShadingModel::UNLIT;
+    return rrl::asset::ShadingModel::UNLIT;
 }
 
 void ShaderManager::LoadShadersFromDirectory(const std::string& directory_path) {
@@ -63,7 +63,7 @@ void ShaderManager::LoadShadersFromDirectory(const std::string& directory_path) 
     }
 
     // Fallback if the folder was empty
-    if (loaded_shaders.find(data::ShadingModel::UNLIT) == loaded_shaders.end()) {
+    if (loaded_shaders.find(rrl::asset::ShadingModel::UNLIT) == loaded_shaders.end()) {
         LOG_WARN("[ShaderManager] 'unlit' shader missing from runtime folder. Injecting embedded fallback.");
         LoadShadersFromSource();
     }
@@ -73,7 +73,7 @@ void ShaderManager::LoadShadersFromSource() {
     LOG_INFO("[ShaderManager] Loading embedded shaders.");
 
     // Lambda to load a shader from source
-    auto inject = [&](data::ShadingModel model, const char* vert, const char* frag) {
+    auto inject = [&](rrl::asset::ShadingModel model, const char* vert, const char* frag) {
         if (loaded_shaders.find(model) == loaded_shaders.end()) {
             auto shader = std::make_unique<Shader>();
             shader->LoadFromSource(vert, frag);
@@ -83,12 +83,12 @@ void ShaderManager::LoadShadersFromSource() {
         }
     };
 
-    inject(data::ShadingModel::UNLIT, shaders::unlit_vert, shaders::unlit_frag);
-    // inject(data::ShadingModel::POINT_CLOUD, shaders::point_cloud_vert, shaders::point_cloud_frag);
-    // inject(data::ShadingModel::UI2D, shaders::ui2d_vert, shaders::ui2d_frag);
+    inject(rrl::asset::ShadingModel::UNLIT, shaders::unlit_vert, shaders::unlit_frag);
+    // inject(rrl::asset::ShadingModel::POINT_CLOUD, shaders::point_cloud_vert, shaders::point_cloud_frag);
+    // inject(rrl::asset::ShadingModel::UI2D, shaders::ui2d_vert, shaders::ui2d_frag);
 }
 
-Shader* ShaderManager::GetShader(data::ShadingModel shading_model) {
+Shader* ShaderManager::GetShader(rrl::asset::ShadingModel shading_model) {
     auto it = loaded_shaders.find(shading_model);
     if (it != loaded_shaders.end()) {
         return it->second.get();
