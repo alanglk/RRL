@@ -31,6 +31,7 @@
         "RRL_TESTING": "ON",
         "RRL_EXAMPLES": "ON",
         "RRL_BENCHMARKS": "OFF",
+        "RRL_DOCUMENTATION": "OFF",
         "RRL_SHARED": "OFF"
       }
     },
@@ -44,6 +45,7 @@
         "RRL_TESTING": "ON",
         "RRL_EXAMPLES": "ON",
         "RRL_BENCHMARKS": "OFF",
+        "RRL_DOCUMENTATION": "OFF",
         "RRL_SHARED": "OFF"
       }
     },
@@ -55,9 +57,10 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "RRL_ENABLE_NATIVE_ARCH": "ON",
-        "RRL_BENCHMARKS": "ON",
         "RRL_TESTING": "OFF",
         "RRL_EXAMPLES": "OFF",
+        "RRL_BENCHMARKS": "ON",
+        "RRL_DOCUMENTATION": "OFF",
         "RRL_SHARED": "OFF"
       }
     },
@@ -71,6 +74,7 @@
         "RRL_TESTING": "OFF",
         "RRL_EXAMPLES": "OFF",
         "RRL_BENCHMARKS": "OFF",
+        "RRL_DOCUMENTATION": "ON",
         "RRL_SHARED": "ON"
       }
     }
