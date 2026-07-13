@@ -45,6 +45,7 @@
         "RRL_TESTING": "ON",
         "RRL_EXAMPLES": "ON",
         "RRL_BENCHMARKS": "OFF",
+        "RRL_CODE_COVERAGE": "ON",
         "RRL_DOCUMENTATION": "OFF",
         "RRL_SHARED": "OFF"
       }
