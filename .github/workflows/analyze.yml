@@ -24,7 +24,7 @@ jobs:
       with:
         submodules: recursive 
 
-    # Setup the environment exactly like your test build
+    # Linux Dependencies
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2
       with:
