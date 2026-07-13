@@ -31,19 +31,19 @@
         "RRL_TESTING": "ON",
         "RRL_EXAMPLES": "ON",
         "RRL_BENCHMARKS": "OFF",
-        "RRL_DOCUMENTATION": "OFF",
+        "RRL_DOCUMENTATION": "ON",
         "RRL_SHARED": "OFF"
       }
     },
     {
       "name": "test",
       "displayName": "Testing Build",
-      "description": "Release build with testing enabled.",
+      "description": "Debug build with testing enabled.",
       "inherits": "base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_BUILD_TYPE": "Debug",
         "RRL_TESTING": "ON",
-        "RRL_EXAMPLES": "ON",
+        "RRL_EXAMPLES": "OFF",
         "RRL_BENCHMARKS": "OFF",
         "RRL_CODE_COVERAGE": "ON",
         "RRL_DOCUMENTATION": "OFF",
