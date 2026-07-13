@@ -100,6 +100,13 @@ if(MSVC)
     add_compile_options(/Zc:preprocessor)
 endif()
 
+# --- Code Coverage -----------------------------------------------
+if(RRL_TESTING AND RRL_CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # Disable optimizations (-O0) so coverage lines match exactly with the source code
+    message(STATUS "RRL: Code Coverage instrumentation enabled.")
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
 
 # --- Library Setup Variables -------------------------------------
 set(RRL_TYPE STATIC)                # STATIC or SHARED
@@ -581,11 +588,3 @@ if(RRL_DOCUMENTATION)
     endif()
 endif()
 
-
-# --- Code Coverage -----------------------------------------------
-if(RRL_TESTING AND RRL_CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    # Disable optimizations (-O0) so coverage lines match exactly with the source code
-    message(STATUS "RRL: Code Coverage instrumentation enabled.")
-    add_compile_options(--coverage -O0 -g)
-    add_link_options(--coverage)
-endif()
