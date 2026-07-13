@@ -34,24 +34,55 @@ jobs:
         with:
           submodules: recursive 
 
-      # --- Dependencies ------------------------------------------
+      # --- Caching Setup -----------------------------------------
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: ${{ matrix.os }}-ccache
+      - name: Cache Linux APT packages
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: apt-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: apt-${{ runner.os }}-
+      - name: Cache macOS Homebrew packages
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: brew-${{ runner.os }}-
+      - name: Cache Windows vcpkg & Chocolatey
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\vcpkg\archives
+            C:\ProgramData\chocolatey\cache
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: vcpkg-${{ runner.os }}-
+
+
+      # --- Dependencies Installation -----------------------------
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
         run: |
+          # Remove the runner's default auto-clean policy so our cache is preserved
+          sudo rm -f /etc/apt/apt.conf.d/docker-clean
           sudo apt-get update
           sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev libxkbcommon-dev libwayland-dev xorg-dev
+
       - name: Install macOS Dependencies
         if: runner.os == 'macOS'
         run: |
           brew install ninja opencv glfw fmt boost
+
       - name: Install Windows Dependencies
         if: runner.os == 'Windows'
         run: |
           choco install ninja --confirm
+          # vcpkg will automatically detect the cached archives and skip recompiling!
           vcpkg install fmt glfw3 opencv4:x64-windows boost:x64-windows
       
 

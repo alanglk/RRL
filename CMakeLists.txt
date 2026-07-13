@@ -408,6 +408,7 @@ add_library(RRL::rrl ALIAS rrl)
 # --- Subdirectories ----------------------------------------------
 if(RRL_TESTING)
     message(STATUS "RRL: Configuring Tests...")
+    enable_testing()
     add_subdirectory(test)
 endif()
 

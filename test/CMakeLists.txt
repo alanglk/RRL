@@ -41,9 +41,6 @@ if(NOT TARGET gtest)
     message(FATAL_ERROR "RRL [Tests]: Failed to fetch or configure the GoogleTest framework.")
 endif()
 
-enable_testing()
-
-
 
 # --- Test Dependencies -------------------------------------------
 set(RRL_TESTING_LIBS RRL::rrl GTest::gtest_main)
