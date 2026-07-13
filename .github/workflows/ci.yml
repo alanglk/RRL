@@ -19,6 +19,8 @@ jobs:
     # Allow compilation on different platforms
     name: ${{ matrix.os }} Build & Test
     runs-on: ${{ matrix.os }}
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg_binary_cache
     strategy:
       fail-fast: false 
       matrix:
@@ -57,8 +59,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~\AppData\Local\vcpkg\archives
-            C:\ProgramData\chocolatey\cache
+            ${{ github.workspace }}/vcpkg_binary_cache
+            C:/ProgramData/chocolatey/cache
           key: vcpkg-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
           restore-keys: vcpkg-${{ runner.os }}-
 
