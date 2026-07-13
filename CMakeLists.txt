@@ -81,10 +81,17 @@ if(RRL_IS_MASTER_PROJECT)
 endif()
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-set(CMAKE_INSTALL_RPATH "$ORIGIN" "$ORIGIN/../lib")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
 set(CMAKE_SKIP_RPATH FALSE)
-set(CMAKE_MACOSX_RPATH FALSE)
+
+# OS-Specific Dynamic Linking Paths (RPATH)
+if(APPLE)
+    set(CMAKE_MACOSX_RPATH TRUE)
+    set(CMAKE_INSTALL_RPATH "@executable_path" "@executable_path/../lib")
+else()
+    set(CMAKE_MACOSX_RPATH FALSE)
+    set(CMAKE_INSTALL_RPATH "$ORIGIN" "$ORIGIN/../lib")
+endif()
 
 
 # --- Library Setup Variables -------------------------------------
