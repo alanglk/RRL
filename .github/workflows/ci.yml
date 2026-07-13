@@ -115,8 +115,8 @@ jobs:
       - name: Generate LCOV Report
         if: runner.os == 'Linux'
         run: |
-          # Capture the raw coverage data
-          lcov --capture --directory . --output-file coverage.info
+          # Point directly to the build/test directory where the .gcda files live
+          lcov --capture --directory build/test --output-file coverage.info
           # Strip out third-party libs, system headers, and the test files themselves
           lcov --remove coverage.info '/usr/*' '${{ github.workspace }}/third_party/*' '${{ github.workspace }}/test/*' '${{ github.workspace }}/examples/*' --output-file coverage.info
           # Print a quick summary to the GitHub Actions terminal
