@@ -72,7 +72,7 @@ jobs:
           # Remove the runner's default auto-clean policy so our cache is preserved
           sudo rm -f /etc/apt/apt.conf.d/docker-clean
           sudo apt-get update
-          sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev libxkbcommon-dev libwayland-dev xorg-dev
+          sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev libxkbcommon-dev libwayland-dev xorg-dev lcov
 
       - name: Install macOS Dependencies
         if: runner.os == 'macOS'
@@ -110,30 +110,49 @@ jobs:
       - name: Run Tests
         run: ctest --preset run-tests
 
+        # --- Coverage Reporting ------------------------------------
+        # ONLY on the ubuntu runner
+      - name: Generate LCOV Report
+        if: runner.os == 'Linux'
+        run: |
+          # Capture the raw coverage data
+          lcov --capture --directory . --output-file coverage.info
+          # Strip out third-party libs, system headers, and the test files themselves
+          lcov --remove coverage.info '/usr/*' '${{ github.workspace }}/third_party/*' '${{ github.workspace }}/test/*' '${{ github.workspace }}/examples/*' --output-file coverage.info
+          # Print a quick summary to the GitHub Actions terminal
+          lcov --list coverage.info
+      - name: Upload to Codecov
+        if: runner.os == 'Linux'
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       # --- Distribution (Release Preset) -------------------------
+      # ONLY run packaging on the 'main' branch or when a 'vX.X.X' tag is pushed
       - name: Configure Release Packages (Linux/macOS)
-        if: runner.os != 'Windows'
+        if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && runner.os != 'Windows'
         run: cmake --preset release
-
       - name: Configure Release Packages (Windows)
-        if: runner.os == 'Windows'
+        if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && runner.os == 'Windows'
         env:
           CC: cl
           CXX: cl
         run: cmake --preset release "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake"
-
       - name: Build Release Packages
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         run: cmake --build --preset release
 
       - name: Generate Packages (CPack)
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         run: |
           cd build/release
           cpack -C Release
 
-
       # --- Upload Artifacts --------------------------------------
       - name: Upload Distributable Packages
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: RRL-Packages-${{ matrix.os }}

@@ -39,6 +39,7 @@ option(RRL_TESTING                  "Build RRL tests" OFF )
 option(RRL_DOCUMENTATION            "Build RRL doxygen documentation" OFF )
 option(RRL_EXAMPLES                 "Build RRL examples" OFF)
 option(RRL_BENCHMARKS               "Build RRL performance benchmarks" OFF)
+option(RRL_CODE_COVERAGE            "Enable GCC/Clang code coverage tracking" OFF)
 option(RRL_ENABLE_NATIVE_ARCH       "Optimize for the host CPU architecture (breaks portability)" OFF)
 option(RRL_BUILD_SWR_SIMD_BACKEND   "Build the software rendering backend with SIMD acceleration" ON)
 
@@ -572,4 +573,13 @@ if(RRL_DOCUMENTATION)
         set(RRL_DOCUMENTATION false)
         message(WARNING "RRL_DOCUMENTATION building option was set but this is not a Release build. Skipping documentation build")
     endif()
+endif()
+
+
+# --- Code Coverage -----------------------------------------------
+if(RRL_TESTING AND RRL_CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # Disable optimizations (-O0) so coverage lines match exactly with the source code
+    message(STATUS "RRL: Code Coverage instrumentation enabled.")
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
 endif()
