@@ -116,10 +116,10 @@ jobs:
       - name: Generate LCOV Report
         if: runner.os == 'Linux'
         run: |
-          # Point directly to the build/test directory where the .gcda files live
-          lcov --capture --directory build/test --output-file coverage.info
+          # Capture the raw coverage data, ignoring macro expansion mismatch quirks
+          lcov --capture --directory build/test --output-file coverage.info --ignore-errors mismatch,gcov
           # Strip out third-party libs, system headers, and the test files themselves
-          lcov --remove coverage.info '/usr/*' '${{ github.workspace }}/third_party/*' '${{ github.workspace }}/test/*' '${{ github.workspace }}/examples/*' --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' '*/third_party/*' '*/test/*' '*/examples/*' --output-file coverage.info --ignore-errors mismatch,gcov,unused
           # Print a quick summary to the GitHub Actions terminal
           lcov --list coverage.info
       - name: Upload to Codecov
