@@ -82,6 +82,7 @@ jobs:
       - name: Install Windows Dependencies
         if: runner.os == 'Windows'
         run: |
+          New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE
           choco install ninja --confirm
           # vcpkg will automatically detect the cached archives and skip recompiling!
           vcpkg install fmt glfw3 opencv4:x64-windows boost:x64-windows
