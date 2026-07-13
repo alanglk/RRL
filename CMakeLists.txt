@@ -94,6 +94,12 @@ else()
     set(CMAKE_INSTALL_RPATH "$ORIGIN" "$ORIGIN/../lib")
 endif()
 
+# Force MSVC to use the modern preprocessor
+#   (variadic macros support)
+if(MSVC)
+    add_compile_options(/Zc:preprocessor)
+endif()
+
 
 # --- Library Setup Variables -------------------------------------
 set(RRL_TYPE STATIC)                # STATIC or SHARED
