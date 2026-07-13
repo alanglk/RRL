@@ -36,6 +36,7 @@ endif()
 # --- Building options --------------------------------------------
 option(RRL_SHARED                   "Build RRL as a shared library" OFF )
 option(RRL_TESTING                  "Build RRL tests" OFF )
+option(RRL_DOCUMENTATION            "Build RRL doxygen documentation" OFF )
 option(RRL_EXAMPLES                 "Build RRL examples" OFF)
 option(RRL_BENCHMARKS               "Build RRL performance benchmarks" OFF)
 option(RRL_ENABLE_NATIVE_ARCH       "Optimize for the host CPU architecture (breaks portability)" OFF)
@@ -534,4 +535,34 @@ if(RRL_IS_MASTER_PROJECT)
     endif()
 
     include(CPack)
+endif()
+
+
+# --- Doxygen Documentation ---------------------------------------
+if(RRL_DOCUMENTATION)
+    if(CMAKE_BUILD_TYPE MATCHES "Release|MinSizeRel|RelWithDebInfo")
+        find_package(Doxygen QUIET)
+        if(DOXYGEN_FOUND)
+            # Set input and output files
+            set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in)
+            set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+
+            # Request to configure the file
+            configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
+            message("Doxygen build started")
+
+            # Note the option ALL which allows to build the docs together with the application
+            add_custom_target( doc_doxygen ALL
+                COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
+                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+                COMMENT "Generating RRL documentation with Doxygen"
+                VERBATIM )
+        else()
+            set(RRL_DOCUMENTATION false)
+            message(WARNING "RRL_DOCUMENTATION building option was set but Doxygen wasnt found on path. Skipping documentation build")
+        endif()
+    else()
+        set(RRL_DOCUMENTATION false)
+        message(WARNING "RRL_DOCUMENTATION building option was set but this is not a Release build. Skipping documentation build")
+    endif()
 endif()
