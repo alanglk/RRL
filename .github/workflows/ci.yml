@@ -83,6 +83,9 @@ jobs:
           choco install ninja --confirm
           # vcpkg will automatically detect the cached archives and skip recompiling!
           vcpkg install fmt glfw3 opencv4:x64-windows boost:x64-windows
+      - name: Setup MSVC Environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
       
 
       # --- Verification (Test Preset) ----------------------------
@@ -92,6 +95,9 @@ jobs:
 
       - name: Configure Tests (Windows)
         if: runner.os == 'Windows'
+        env:
+          CC: cl
+          CXX: cl
         # Pass the vcpkg toolchain so CMake finds the packages
         run: cmake --preset test "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake"
 
@@ -109,6 +115,9 @@ jobs:
 
       - name: Configure Release Packages (Windows)
         if: runner.os == 'Windows'
+        env:
+          CC: cl
+          CXX: cl
         run: cmake --preset release "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake"
 
       - name: Build Release Packages
