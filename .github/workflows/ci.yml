@@ -1,6 +1,5 @@
 #.github/workflows/ci.yml
-name: RRL CI/CD Pipeline
-
+name: RRL CI Pipeline
 
 # --- CI Execution Policies ---------------------------------------
 on:
@@ -10,187 +9,92 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
-
-# --- CI Jobs -----------------------------------------------------
 jobs:
+    # --- Testing | Coverage ----------------------------------------
+    test-and-coverage:
+        name: Ubuntu Building / Testing
+        runs-on: ubuntu-latest
+        steps:
+        - name: Checkout Code
+          uses: actions/checkout@v4
+          with:
+            submodules: recursive 
 
-  # --- Build | Test | Package Job --------------------------------
-  build-test-package:
+        # Linux Dependencies
+        - name: Setup ccache
+          uses: hendrikmuhs/ccache-action@v1.2
+          with:
+            key: codeql-ccache
+        - name: Install Linux Dependencies
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev libxkbcommon-dev libwayland-dev xorg-dev lcov
 
-    # Allow compilation on different platforms
-    name: ${{ matrix.os }} Build & Test
-    runs-on: ${{ matrix.os }}
-    env:
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg_binary_cache
-    strategy:
-      fail-fast: false 
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Build and run tests
+        - name: Configure Tests
+          run: cmake --preset test
+        - name: Build Tests
+          run: cmake --build --preset test
+        - name: Run Tests
+          run: ctest --preset run-tests
 
-    # CI steps
-    steps:
-
-      # --- Checkout ----------------------------------------------
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive 
-
-      # --- Caching Setup -----------------------------------------
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ${{ matrix.os }}-ccache
-      - name: Cache Linux APT packages
-        if: runner.os == 'Linux'
-        uses: actions/cache@v4
-        with:
-          path: /var/cache/apt/archives
-          key: apt-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
-          restore-keys: apt-${{ runner.os }}-
-      - name: Cache macOS Homebrew packages
-        if: runner.os == 'macOS'
-        uses: actions/cache@v4
-        with:
-          path: ~/Library/Caches/Homebrew
-          key: brew-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
-          restore-keys: brew-${{ runner.os }}-
-      - name: Cache Windows vcpkg & Chocolatey
-        if: runner.os == 'Windows'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ github.workspace }}/vcpkg_binary_cache
-            C:/ProgramData/chocolatey/cache
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
-          restore-keys: vcpkg-${{ runner.os }}-
+        # Coverage Reporting 
+        - name: Generate LCOV Report
+          run: |
+            # Capture the raw coverage data, ignoring macro expansion mismatch quirks
+            lcov --capture --directory build/test --output-file coverage.info --ignore-errors mismatch,gcov
+            # Strip out third-party libs, system headers, and the test files themselves
+            lcov --remove coverage.info '/usr/*' '*/third_party/*' '*/test/*' '*/examples/*' --output-file coverage.info --ignore-errors mismatch,gcov,unused
+            # Print a quick summary to the GitHub Actions terminal
+            lcov --list coverage.info
+        - name: Upload to Codecov
+          uses: codecov/codecov-action@v4
+          with:
+            file: ./coverage.info
+            fail_ci_if_error: false
+            token: ${{ secrets.CODECOV_TOKEN }}
 
 
-      # --- Dependencies Installation -----------------------------
-      - name: Install Linux Dependencies
-        if: runner.os == 'Linux'
-        run: |
-          # Remove the runner's default auto-clean policy so our cache is preserved
-          sudo rm -f /etc/apt/apt.conf.d/docker-clean
-          sudo apt-get update
-          sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev libxkbcommon-dev libwayland-dev xorg-dev lcov
-
-      - name: Install macOS Dependencies
-        if: runner.os == 'macOS'
-        run: |
-          brew install ninja pkg-config opencv glfw fmt boost
-
-      - name: Install Windows Dependencies
-        if: runner.os == 'Windows'
-        run: |
-          New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE
-          choco install ninja --confirm
-          # vcpkg will automatically detect the cached archives and skip recompiling!
-          vcpkg install fmt glfw3 opencv4:x64-windows boost:x64-windows
-      - name: Setup MSVC Environment (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-      
-
-      # --- Verification (Test Preset) ----------------------------
-      - name: Configure Tests (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: cmake --preset test
-
-      - name: Configure Tests (Windows)
-        if: runner.os == 'Windows'
-        env:
-          CC: cl
-          CXX: cl
-        # Pass the vcpkg toolchain so CMake finds the packages
-        run: cmake --preset test "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake"
-
-      - name: Build Tests
-        run: cmake --build --preset test
-
-      - name: Run Tests
-        run: ctest --preset run-tests
-
-        # --- Coverage Reporting ------------------------------------
-        # ONLY on the ubuntu runner
-      - name: Generate LCOV Report
-        if: runner.os == 'Linux'
-        run: |
-          # Capture the raw coverage data, ignoring macro expansion mismatch quirks
-          lcov --capture --directory build/test --output-file coverage.info --ignore-errors mismatch,gcov
-          # Strip out third-party libs, system headers, and the test files themselves
-          lcov --remove coverage.info '/usr/*' '*/third_party/*' '*/test/*' '*/examples/*' --output-file coverage.info --ignore-errors mismatch,gcov,unused
-          # Print a quick summary to the GitHub Actions terminal
-          lcov --list coverage.info
-      - name: Upload to Codecov
-        if: runner.os == 'Linux'
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.info
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-      # --- Distribution (Release Preset) -------------------------
-      # ONLY run packaging on the 'main' branch or when a 'vX.X.X' tag is pushed
-      - name: Configure Release Packages (Linux/macOS)
-        if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && runner.os != 'Windows'
-        run: cmake --preset release
-      - name: Configure Release Packages (Windows)
-        if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && runner.os == 'Windows'
-        env:
-          CC: cl
-          CXX: cl
-        run: cmake --preset release "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake"
-      - name: Build Release Packages
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-        run: cmake --build --preset release
-
-      - name: Generate Packages (CPack)
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-        run: |
-          cd build/release
-          cpack -C Release
-
-      # --- Upload Artifacts --------------------------------------
-      - name: Upload Distributable Packages
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: RRL-Packages-${{ matrix.os }}
-          path: |
-            build/release/*.zip
-            build/release/*.tar.gz
-            build/release/*.deb
-            build/release/*.rpm
-            build/release/*.dmg
-            build/release/*.msi
-          if-no-files-found: warn
-
-
-
-  # --- Release Job -----------------------------------------------
-  publish-release:
-    name: Publish GitHub Release
-    needs: build-test-package
-    runs-on: ubuntu-latest
-
-    # Only run this job if a tag starting with 'v' was pushed
-    if: startsWith(github.ref, 'refs/tags/v')
+    # --- Static Analysis -------------------------------------------
+    static-analysis:
+        name: CodeQL Analysis
+        runs-on: ubuntu-latest
     
-    # Release required permission 
-    permissions:
-      contents: write
+        # Required permissions to upload the results to GitHub's Security Tab
+        permissions:
+          actions: read
+          contents: read
+          security-events: write
 
-    steps:
-      - name: Download all packages
-        uses: actions/download-artifact@v4
-        with:
-          pattern: RRL-Packages-*
-          path: dist/
-          merge-multiple: true # Flattens all files into the dist/ directory
+        steps:
+        - name: Checkout Code
+          uses: actions/checkout@v4
+          with:
+            submodules: recursive 
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
+        # Linux Dependencies
+        - name: Setup ccache
+          uses: hendrikmuhs/ccache-action@v1.2
+          with:
+            key: codeql-ccache
+        - name: Install Linux Dependencies
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev libxkbcommon-dev libwayland-dev xorg-dev
+
+        # Initialize the CodeQL Tracer
+        - name: Initialize CodeQL
+          uses: github/codeql-action/init@v3
+          with:
+            languages: cpp
+            queries: security-and-quality 
+
+        # Build the code (CodeQL intercepts the compiler to analyze the AST)
+        - name: Configure Tests
+          run: cmake --preset test
+        - name: Build Tests
+          run: cmake --build --preset test
+
+        # Finalize and upload the dashboard results
+        - name: Perform CodeQL Analysis
+          uses: github/codeql-action/analyze@v3

@@ -525,7 +525,15 @@ if(RRL_IS_MASTER_PROJECT)
     set(CPACK_PACKAGE_VENDOR "alanglk")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Robotics Rendering Library (RRL)")
     
-    set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
+    # Windows CPack crashes: 
+    #   CPack Error: Problem creating temporary directory: D:/a/RRL/RRL/build/release/_CPack_Packages/win64/ZIP/RRL-1.0.0-win64C:/Program Files (x86)/RRL
+    # https://gitlab.kitware.com/cmake/cmake/-/work_items/17534
+    if(WIN32)
+        set(CPACK_PACKAGING_INSTALL_PREFIX "/")
+    else()
+        set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
+    endif()
+
     
     set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
     set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
