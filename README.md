@@ -2,6 +2,8 @@
 [![Language](https://img.shields.io/badge/Language-C%2B%2B17-blue.svg)](https://en.cppreference.com/w/cpp/17)
 [![Build System](https://img.shields.io/badge/Build%20System-CMake%203.15%2B-orange.svg)](https://cmake.org/)
 [![License](https://img.shields.io/badge/License-GPL2-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/github/actions/workflow/status/alanglk/RRL/ci.yml?label=tests)](https://github.com/alanglk/RRL/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/alanglk/RRL/graph/badge.svg)](https://codecov.io/gh/alanglk/RRL)
 
 Robotic Rendering Library (RRL) is a C++ synchronous rendering library designed to create real-time robotics scenes representations.
 

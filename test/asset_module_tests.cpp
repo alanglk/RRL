@@ -28,26 +28,25 @@ protected:
 
     // Dummy generators 
     rrl::asset::ImageAsset CreateDummyImage() {
-        return {
-            .width = 1,
-            .height = 1,
-            .channels = rrl::asset::ImageChannelLayout::CH_3,
-            .data_type = rrl::asset::ImageAssetType::UINT8,
-            .color_layout = rrl::asset::ImageColorLayout::RGB,
-            .data = {255, 0, 0} // 1 red pixel
-        };
+        rrl::asset::ImageAsset img;
+        img.width           = 1;
+        img.height          = 1;
+        img.channels        = rrl::asset::ImageChannelLayout::CH_3;
+        img.data_type       = rrl::asset::ImageAssetType::UINT8;
+        img.color_layout    = rrl::asset::ImageColorLayout::RGB;
+        img.data            = {255, 0, 0}; // 1 red pixel
+        return img;
     }
     rrl::asset::MeshAsset CreateDummyMesh() {
-        return {
-            .topology = rrl::asset::MeshTopology::TRIANGLES,
-            .positions = {{0,0,0}, {1,0,0}, {0,1,0}},
-            .indices = {0, 1, 2}
-        };
+        rrl::asset::MeshAsset mesh;
+        mesh.topology = rrl::asset::MeshTopology::TRIANGLES;
+        mesh.positions = {{0,0,0}, {1,0,0}, {0,1,0}};
+        mesh.indices = {0, 1, 2};
+        return mesh;
     }
     rrl::asset::MaterialAsset CreateDummyMaterial() {
-        return {
-            .base_color = {1.0f, 1.0f, 1.0f, 1.0f}
-        };
+        rrl::asset::MaterialAsset mat;
+        return mat.base_color = {1.0f, 1.0f, 1.0f, 1.0f};
     }
 };
 
