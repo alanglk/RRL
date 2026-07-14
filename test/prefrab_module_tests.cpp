@@ -40,7 +40,8 @@ protected:
         img.channels        = rrl::asset::ImageChannelLayout::CH_3;
         img.data_type       = rrl::asset::ImageAssetType::UINT8;
         img.color_layout    = rrl::asset::ImageColorLayout::RGB;
-        img.data            = {255,0,0, 0,255,0, 0,0,255, 255,255,0}
+        img.data            = {255,0,0, 0,255,0, 0,0,255, 255,255,0};
+        return img;
     }
     
     rrl::asset::MeshAsset CreateDummyCuboid() {

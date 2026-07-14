@@ -46,7 +46,8 @@ protected:
     }
     rrl::asset::MaterialAsset CreateDummyMaterial() {
         rrl::asset::MaterialAsset mat;
-        return mat.base_color = {1.0f, 1.0f, 1.0f, 1.0f};
+        mat.base_color = {1.0f, 1.0f, 1.0f, 1.0f};
+        return mat;
     }
 };
 
