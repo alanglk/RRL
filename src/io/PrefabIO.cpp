@@ -46,7 +46,9 @@ namespace rrl::io {
 
 // --- Obj Files ---------------------------------------------------
 static IOPrefab LoadObjPrefab(const std::string& filepath) {
-    IOPrefab scene {.filepath = filepath};
+    IOPrefab scene;
+    scene.filepath = filepath;
+
     tinyobj::ObjReaderConfig config;
     config.triangulate = true;
     config.vertex_color = true;
@@ -74,7 +76,9 @@ static IOPrefab LoadObjPrefab(const std::string& filepath) {
 
     // Load Materials
     for (const auto& tiny_mat : tiny_materials) {
-        IOMaterial parsed_mat {.name = tiny_mat.name };
+        IOMaterial parsed_mat;
+        parsed_mat.name = tiny_mat.name;
+
         
         // PBR albedo = Phong diffuse
         parsed_mat.material_parameters.base_color = glm::vec4(

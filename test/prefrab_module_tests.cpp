@@ -34,14 +34,13 @@ protected:
 
     // Dummy generators using the new rrl::data namespace
     rrl::asset::ImageAsset CreateDummyImage() {
-        return {
-            .width = 2,
-            .height = 2,
-            .channels = rrl::asset::ImageChannelLayout::CH_3,
-            .data_type = rrl::asset::ImageAssetType::UINT8,
-            .color_layout = rrl::asset::ImageColorLayout::RGB,
-            .data = {255,0,0, 0,255,0, 0,0,255, 255,255,0}
-        };
+        rrl::asset::ImageAsset img;
+        img.width           = 2;
+        img.height          = 2;
+        img.channels        = rrl::asset::ImageChannelLayout::CH_3;
+        img.data_type       = rrl::asset::ImageAssetType::UINT8;
+        img.color_layout    = rrl::asset::ImageColorLayout::RGB;
+        img.data            = {255,0,0, 0,255,0, 0,0,255, 255,255,0}
     }
     
     rrl::asset::MeshAsset CreateDummyCuboid() {
