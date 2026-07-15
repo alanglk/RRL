@@ -62,7 +62,7 @@ struct RRL_API IOPrefab {
  * Supported formats:
  *  - .obj
  */
-IOPrefab RRL_API LoadPrefab(const std::string& filepath);
+rrl::io::IOPrefab RRL_API LoadPrefab(const std::string& filepath);
 
 
 
