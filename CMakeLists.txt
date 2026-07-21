@@ -8,6 +8,19 @@
 
 cmake_minimum_required(VERSION 3.15)
 
+# Automatically use vcpkg on Windows if the VCPKG_ROOT environment variable is set
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    if(DEFINED ENV{VCPKG_ROOT})
+        set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" 
+            CACHE STRING "vcpkg toolchain")
+    else()
+        message(WARNING "Compiling on Windows but VCPKG_ROOT is not set. Dependencies may fail to resolve.")
+    endif()
+endif()
+
+
+
+# --- Project Definition ------------------------------------------
 project(RRL 
     VERSION 1.0.0 
     DESCRIPTION "Robotics Rendering Library (RRL)"
