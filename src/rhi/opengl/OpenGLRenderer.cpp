@@ -1,4 +1,4 @@
-// RRL/src/rhi/software/SoftwareRenderer.cpp
+// RRL/src/rhi/software/OpenGLRenderer.cpp
 
 
 // Runtime components
@@ -246,10 +246,10 @@ static void Shutdown(entt::registry& registry) {
     }
 
     // Safely delete all GPU resources
-    for (auto& [handle, _] : ctx.materials)      DestroyMaterial(registry, handle);
-    for (auto& [handle, _] : ctx.meshes)         DestroyMesh(registry, handle);
-    for (auto& [handle, _] : ctx.textures)       DestroyTexture(registry, handle);
-    for (auto& [handle, _] : ctx.render_targets) DestroyRenderTarget(registry, handle);
+    while (!ctx.materials.empty())      DestroyMaterial(registry, ctx.materials.begin()->first);
+    while (!ctx.meshes.empty())         DestroyMesh(registry, ctx.meshes.begin()->first);
+    while (!ctx.textures.empty())       DestroyTexture(registry, ctx.textures.begin()->first);
+    while (!ctx.render_targets.empty()) DestroyRenderTarget(registry, ctx.render_targets.begin()->first);
 
 
     // Destroy the hidden offscreen window if it exists

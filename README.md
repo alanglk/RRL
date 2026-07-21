@@ -48,3 +48,9 @@ All matrix operations are implemented using GLM.
 # Library Design
 
 > Insert overall diagram
+
+
+# Todo
+- Segmentation fault on OpenGL backend shutdown (render targets destroy)
+- ImageAsset row padding. OpenCV and IplImages usually add row padding to make the image memory aligned.
+- ImageAsset avoid data-copying? (I dont know if it is possible).
