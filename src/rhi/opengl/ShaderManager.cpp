@@ -97,4 +97,9 @@ Shader* ShaderManager::GetShader(rrl::asset::ShadingModel shading_model) {
     return nullptr;
 }
 
+void ShaderManager::ClearShaders() {
+    loaded_shaders.clear();
+}
+
+
 } // namespace rrl::rhi::opengl

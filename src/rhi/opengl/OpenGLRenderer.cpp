@@ -121,6 +121,9 @@ struct OpenGLContext {
     TextureHandle next_tex_handle = 1;
     MeshHandle next_mesh_handle = 1;
     MaterialHandle next_mat_handle = 1;
+    
+    // UI VAO to render a full quad texture
+    GLuint ui_empty_vao = 0;
 
     // Offscreen fallback context for HEADLESS and OPENCV modes
     GLFWwindow* hidden_window { nullptr };
@@ -184,14 +187,18 @@ static bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t
     }
 
     // Bind context to the executing thread and load GL function pointers
+    static bool glad_initialized = false;
     glfwMakeContextCurrent(target_gl_context);
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        LOG_ERROR("[OpenGL RHI] GLAD failed to load OpenGL 4.5 Core function pointers.");
-        if (ctx.hidden_window) {
-            glfwDestroyWindow(ctx.hidden_window);
+    if (!glad_initialized) {
+        if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+            LOG_ERROR("[OpenGL RHI] GLAD failed to load OpenGL 4.5 Core function pointers.");
+            if (ctx.hidden_window) {
+                glfwDestroyWindow(ctx.hidden_window);
+            }
+            registry.ctx().erase<OpenGLContext>();
+            return false;
         }
-        registry.ctx().erase<OpenGLContext>();
-        return false;
+        glad_initialized = true;
     }
 
     // Configure global OpenGL configurations default states
@@ -213,6 +220,7 @@ static bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t
     // Initialize TARGET_MAIN
     ctx.next_target_handle = TARGET_MAIN; // Which equals 0
     CreateRenderTarget(registry, render_width, render_height);
+    glCreateVertexArrays(1, &ctx.ui_empty_vao);
 
     // Load shaders
     #ifdef RRL_EMBED_SHADERS
@@ -243,6 +251,8 @@ static void Shutdown(entt::registry& registry) {
     }
     if (target_context) {
         glfwMakeContextCurrent(target_context);
+    } else {
+        LOG_WARN("[OpenGL RHI] Shutting down without a valid OpenGL context! Skipping VRAM cleanup to prevent segfaults.");
     }
 
     // Safely delete all GPU resources
@@ -251,6 +261,16 @@ static void Shutdown(entt::registry& registry) {
     while (!ctx.textures.empty())       DestroyTexture(registry, ctx.textures.begin()->first);
     while (!ctx.render_targets.empty()) DestroyRenderTarget(registry, ctx.render_targets.begin()->first);
 
+    // Clean the UI VAO
+    if (ctx.ui_empty_vao != 0) {
+        if (glfwGetCurrentContext() != nullptr) {
+            glDeleteVertexArrays(1, &ctx.ui_empty_vao);
+        }
+        ctx.ui_empty_vao = 0;
+    }
+    
+    // Clean shaders
+    ShaderManager::I().ClearShaders(); 
 
     // Destroy the hidden offscreen window if it exists
     if (ctx.hidden_window) {
@@ -380,9 +400,7 @@ static void RenderFrame(entt::registry& registry) {
 
     Shader* ui_shader = bind_shader(rrl::asset::ShadingModel::UI2D);
     if (ui_shader) {
-        static GLuint empty_vao = 0;
-        if (empty_vao == 0) glCreateVertexArrays(1, &empty_vao);
-        glBindVertexArray(empty_vao);
+        glBindVertexArray(ctx.ui_empty_vao);
 
         auto ui_view = registry.view<rrl::asset::TextureLinkage>();
         for (auto ui_entity : ui_view) {
@@ -450,9 +468,11 @@ static void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle han
 
     auto it = ctx.render_targets.find(handle);
     if (it != ctx.render_targets.end()) {
-        glDeleteFramebuffers(1, &it->second.fbo);
-        glDeleteTextures(1, &it->second.color_texture);
-        glDeleteTextures(1, &it->second.depth_texture);
+        if (glfwGetCurrentContext() != nullptr) {
+            glDeleteFramebuffers(1, &it->second.fbo);
+            glDeleteTextures(1, &it->second.color_texture);
+            glDeleteTextures(1, &it->second.depth_texture);
+        }
         ctx.render_targets.erase(it);
     }
 }
@@ -520,7 +540,9 @@ static void DestroyTexture(entt::registry& registry, TextureHandle handle) {
     auto& ctx = registry.ctx().get<OpenGLContext>();
     auto it = ctx.textures.find(handle);
     if (it != ctx.textures.end()) {
-        glDeleteTextures(1, &it->second.id);
+        if (glfwGetCurrentContext() != nullptr) {
+            glDeleteTextures(1, &it->second.id);
+        }
         ctx.textures.erase(it);
     }
 }
@@ -584,13 +606,15 @@ static void DestroyMesh(entt::registry& registry, MeshHandle handle) {
     
     auto it = ctx.meshes.find(handle);
     if (it != ctx.meshes.end()) {
-        const GLMesh& m = it->second;
-        if (m.vao)              glDeleteVertexArrays(1, &m.vao);
-        if (m.vbo_positions)    glDeleteBuffers(1, &m.vbo_positions);
-        if (m.vbo_normals)      glDeleteBuffers(1, &m.vbo_normals);
-        if (m.vbo_uvs)          glDeleteBuffers(1, &m.vbo_uvs);
-        if (m.vbo_colors)       glDeleteBuffers(1, &m.vbo_colors);
-        if (m.ebo)              glDeleteBuffers(1, &m.ebo);
+        if (glfwGetCurrentContext() != nullptr) {
+            const GLMesh& m = it->second;
+            if (m.vao)              glDeleteVertexArrays(1, &m.vao);
+            if (m.vbo_positions)    glDeleteBuffers(1, &m.vbo_positions);
+            if (m.vbo_normals)      glDeleteBuffers(1, &m.vbo_normals);
+            if (m.vbo_uvs)          glDeleteBuffers(1, &m.vbo_uvs);
+            if (m.vbo_colors)       glDeleteBuffers(1, &m.vbo_colors);
+            if (m.ebo)              glDeleteBuffers(1, &m.ebo);
+        }
         
         ctx.meshes.erase(it);
     }
@@ -687,7 +711,9 @@ static void DestroyMaterial(entt::registry& registry, MaterialHandle handle) {
     
     auto it = ctx.materials.find(handle);
     if (it != ctx.materials.end()) {
-        glDeleteBuffers(1, &it->second.ubo);
+        if (glfwGetCurrentContext() != nullptr) {
+            glDeleteBuffers(1, &it->second.ubo);
+        }
         ctx.materials.erase(it);
     }
 }

@@ -30,6 +30,9 @@ public:
     
     // Returns a raw pointer to the shader
     Shader* GetShader(rrl::asset::ShadingModel shading_model);
+    
+    // Clean shaders
+    void ClearShaders();
 
 private:
     ShaderManager() = default;
