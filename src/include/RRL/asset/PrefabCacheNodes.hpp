@@ -1,6 +1,7 @@
 // RRL/src/include/RRL/scene/SceneManager.hpp
 #pragma once
 
+#include "RRL/asset/AssetTypes.hpp"
 
 #include <entt/entt.hpp>
 
@@ -9,17 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "RRL/scene/SceneTypes.hpp"
-
-namespace rrl::scene {
-
-/**
- * @brief Tag attached to every prefab spawned instance. 
-* Stores the full path used to spawn it (e.g., "city" or "city.car.wheel").
- */
-struct PrefabInstanceComponent { 
-    PrefabID path;
-};
+namespace rrl::asset {
 
 
 // --- Cache Definitiosn -------------------------------------------
@@ -47,5 +38,6 @@ struct PrefabBlueprint {
 struct PrefabCache {
     std::unordered_map<PrefabID, PrefabBlueprint> blueprints;
 };
+
 
 } // namespace rrl::scene

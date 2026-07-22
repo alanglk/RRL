@@ -1,11 +1,12 @@
 // RRL/src/modules/SceneModule.cpp
 
 #include "RRL/modules/SceneModule.hpp"
-#include "RRL/scene/PrefabManager.hpp"
+#include "RRL/scene/PrefabInstanceManager.hpp"
 
 #include "RRL/EngineContext.hpp"
 #include "RRL/EnttCasting.hpp"
-#include "RRL/scene/SceneTypes.hpp"
+
+#include "RRL/scene/SceneManager.hpp"
 
 
 namespace rrl {
@@ -13,72 +14,43 @@ namespace rrl {
 
 // --- Constructor / Destructor ------------------------------------
 SceneModule::SceneModule(EngineContext* ctx): m_ctx(ctx) {
-    // Automatically boot up the Scene Manager's internal caches and hooks
-    rrl::scene::InitializePrefabManager(m_ctx->registry);
+    rrl::scene::InitializeSceneManager(m_ctx->registry);
 }
-SceneModule::~SceneModule() { }
+SceneModule::~SceneModule() {}
 
 
 // --- Basic Node Lifecycle ----------------------------------------
 ObjectID SceneModule::SpawnObject() {
     // Simply ask EnTT for a fresh ID
-    return ToObjectID(m_ctx->registry.create());
+    return ToObjectID(rrl::scene::SpawnObject(m_ctx->registry));
 }
 void SceneModule::DestroyObject(ObjectID object) {
-    entt::entity ent = ToEntt(object);
-    if (m_ctx->registry.valid(ent)) {
-        m_ctx->registry.destroy(ent);
-    }
+    rrl::scene::DestroyObject(m_ctx->registry, ToEntt(object));
 }
 
 
 // --- Prefabs -----------------------------------------------------
-void SceneModule::PreloadPrefabBlueprint(const scene::PrefabID& blueprint_id, rrl::io::IOPrefab&& prefab_data) {
-    rrl::scene::PreloadPrefabBlueprint(m_ctx->registry, blueprint_id, std::move(prefab_data));
-}
-
 ObjectID SceneModule::SpawnPrefab(const scene::PrefabID& blueprint_id) {
-    entt::entity root_entity = rrl::scene::SpawnPrefab(m_ctx->registry, blueprint_id);
+    entt::entity root_entity = rrl::scene::SpawnPrefabInstance(m_ctx->registry, blueprint_id);
     return ToObjectID(root_entity);
 }
 void SceneModule::DestroyPrefab(ObjectID prefab_object, bool force_asset_deletion) {
-    rrl::scene::DestroyPrefab(m_ctx->registry, ToEntt(prefab_object), force_asset_deletion);
+    rrl::scene::DestroyPrefabInstance(m_ctx->registry, ToEntt(prefab_object), force_asset_deletion);
 }
 
 
 // --- Scene Environment -------------------------------------------
 void SceneModule::SetEnvironmentColor(const glm::vec4& color) {
-    if (!m_ctx->registry.ctx().contains<scene::SceneEnvironment>()) {
-        m_ctx->registry.ctx().emplace<scene::SceneEnvironment>();
-    }
-    auto& env = m_ctx->registry.ctx().get<scene::SceneEnvironment>();
-    env.type = scene::EnvironmentType::SOLID_COLOR;
-    env.clear_color = color;
+    rrl::scene::SetEnvironmentColor(m_ctx->registry, color);
 }
 void SceneModule::SetEnvironmentEquirectangular(rrl::AssetID texture_asset) {
-    if (!m_ctx->registry.ctx().contains<scene::SceneEnvironment>()) {
-        m_ctx->registry.ctx().emplace<scene::SceneEnvironment>();
-    }
-    auto& env = m_ctx->registry.ctx().get<scene::SceneEnvironment>();
-    env.type = scene::EnvironmentType::SKYBOX_EQUIRECTANGULAR;
-    env.environment_texture = texture_asset;
+    rrl::scene::SetEnvironmentEquirectangular(m_ctx->registry, texture_asset);
 }
 void SceneModule::SetEnvironmentCubemap(rrl::AssetID cubemap_asset) {
-    if (!m_ctx->registry.ctx().contains<scene::SceneEnvironment>()) {
-        m_ctx->registry.ctx().emplace<scene::SceneEnvironment>();
-    }
-    auto& env = m_ctx->registry.ctx().get<scene::SceneEnvironment>();
-    env.type = scene::EnvironmentType::SKYBOX_CUBEMAP;
-    env.environment_texture = cubemap_asset;
+    rrl::scene::SetEnvironmentCubemap(m_ctx->registry, cubemap_asset);
 }
 void SceneModule::SetEnvironmentCustomMesh(rrl::AssetID texture_asset, rrl::AssetID mesh_asset) {
-    if (!m_ctx->registry.ctx().contains<scene::SceneEnvironment>()) {
-        m_ctx->registry.ctx().emplace<scene::SceneEnvironment>();
-    }
-    auto& env = m_ctx->registry.ctx().get<scene::SceneEnvironment>();
-    env.type = scene::EnvironmentType::CUSTOM_MESH;
-    env.environment_texture = texture_asset;
-    env.custom_mesh = mesh_asset;
+    rrl::scene::SetEnvironmentCustomMesh(m_ctx->registry, texture_asset, mesh_asset);
 }
 
 

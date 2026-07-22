@@ -2,7 +2,8 @@
 
 #include "RRL/debug/SceneDebugger.hpp"
 
-#include "RRL/scene/PrefabComponents.hpp"
+#include "RRL/asset/PrefabCacheNodes.hpp"
+#include "RRL/scene/PrefabInstance.hpp"
 
 #include "RRL/EnttCasting.hpp"
 #include "RRL/DebugMacros.hpp"
@@ -12,7 +13,7 @@ namespace rrl::debug::scene {
 
 // --- Helpers -----------------------------------------------------
 // Recursive helper to map the internal blueprint tree to the debug tree
-static BlueprintNodeStats MapNodeToStats(const rrl::scene::PrefabNodeBlueprint& internal_node) {
+static BlueprintNodeStats MapNodeToStats(const rrl::asset::PrefabNodeBlueprint& internal_node) {
     BlueprintNodeStats stats;
     stats.name          = internal_node.name;
     stats.mesh_asset    = ToAssetID( internal_node.mesh_asset );
@@ -27,15 +28,15 @@ static BlueprintNodeStats MapNodeToStats(const rrl::scene::PrefabNodeBlueprint& 
 
 // --- API ---------------------------------------------------------
 SceneDebugReport GetSceneDebugReport(entt::registry& registry) {
-    RRL_ASSERT(registry.ctx().contains<rrl::scene::PrefabCache>(), "SceneManager not initialized!");
+    RRL_ASSERT(registry.ctx().contains<rrl::asset::PrefabCache>(), "SceneManager not initialized!");
     SceneDebugReport report;
 
     // Safety check: Is the SceneManager initialized?
-    if (!registry.ctx().contains<rrl::scene::PrefabCache>()) {
+    if (!registry.ctx().contains<rrl::asset::PrefabCache>()) {
         return report;
     }
 
-    const auto& cache = registry.ctx().get<rrl::scene::PrefabCache>().blueprints;
+    const auto& cache = registry.ctx().get<rrl::asset::PrefabCache>().blueprints;
 
     // Tracked blueprints
     for (const auto& [id, blueprint] : cache) {

@@ -1,11 +1,8 @@
 // RRL/src/include/RRL/scene/PrefabManager.hpp
 #pragma once
 
-#include "RRL/scene/SceneTypes.hpp"
-#include "RRL/io/PrefabIO.hpp"
-
+#include "RRL/asset/AssetTypes.hpp"
 #include <entt/entt.hpp>
-
 
 
 namespace rrl::scene {
@@ -18,19 +15,12 @@ namespace rrl::scene {
  * with its internal relations, just a 'car' with its hierarchy or we can only spwan a 'wheel'.
 */
 
-
-// --- Lifecycle ---------------------------------------------------
-/**
- * @brief Initializes the Scene Manager, establishing the internal blueprint cache.
+/*
+ * These functions manages the prefab blueprints instancing and runtime destruction. 
+ * See src/include/RRL/asset/PrefabBlueprintManager.hpp for in memory loading and unloading. 
  */
-void InitializePrefabManager(entt::registry& registry);
 
-/**
- * @brief Takes ownership of raw prefab data, uploads assets to VRAM, 
- * and caches the lightweight blueprint.
- */
-void PreloadPrefabBlueprint(entt::registry& registry, const PrefabID& blueprint_id, io::IOPrefab&& prefab_data);
-
+// --- Runtime -----------------------------------------------------
 /**
  * @brief Instantiates a prefab into the world using a cached blueprint_id.
  * @brief Instantiates a prefab or any nested sub-prefab using dot-notation.
@@ -40,12 +30,12 @@ void PreloadPrefabBlueprint(entt::registry& registry, const PrefabID& blueprint_
  * SpawnPrefab(registry, "rungholt_city.vehicle_1.wheel_fl")
  * @return entt::entity The Root Entity, or entt::null if the blueprint isn't cached.
  */
-entt::entity SpawnPrefab(entt::registry& registry, const PrefabID& blueprint_id);
+entt::entity SpawnPrefabInstance(entt::registry& registry, const rrl::asset::PrefabID& blueprint_id);
 
 /**
  * @brief Destroys a spawned prefab.
  */
-void DestroyPrefab(entt::registry& registry, entt::entity prefab_entity, bool force_asset_deletion = false);
+void DestroyPrefabInstance(entt::registry& registry, entt::entity prefab_entity, bool force_asset_deletion = false);
 
 
 

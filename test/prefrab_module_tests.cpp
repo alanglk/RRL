@@ -189,7 +189,7 @@ TEST_F(PrefabManagerTest, PreloadProceduralBlueprint) {
     auto dummy_prefab = CreateDummyPrefab(dummy_id);
     
     // Preload it into the cache
-    engine->scene.PreloadPrefabBlueprint(dummy_id, std::move(dummy_prefab));
+    engine->asset.PreloadPrefabBlueprint(dummy_id, std::move(dummy_prefab));
 
     // Check SceneManager Cache
     auto scene_report = engine->debug.GetSceneDebugReport();
@@ -226,7 +226,7 @@ TEST_F(PrefabManagerTest, SpawnSpecificSubNode) {
     house_prefab.root_nodes.push_back(std::move(root_node));
 
     std::string bp_id = "city_house";
-    engine->scene.PreloadPrefabBlueprint(bp_id, std::move(house_prefab));
+    engine->asset.PreloadPrefabBlueprint(bp_id, std::move(house_prefab));
 
     // We only want to spawn the door, ignoring the rest of the building!
     // Format: BlueprintID.RootNode.ChildNode
@@ -250,7 +250,7 @@ TEST_F(PrefabManagerTest, ComplexPrefabHierarchyTest) {
         5, 10, 25, 25, 
         1337 // Fixed seed for reproducible tests
     );
-    engine->scene.PreloadPrefabBlueprint(prefab_id, std::move(heavy_prefab));
+    engine->asset.PreloadPrefabBlueprint(prefab_id, std::move(heavy_prefab));
 
     // Spawn 100 copies of this massive tree
     std::vector<rrl::ObjectID> swarm;

@@ -43,7 +43,7 @@ int main() {
     // Load and instantiate the model
     LOG_INFO("[RRL Engine] Loading city assets...");
     rrl::io::IOPrefab rungholt_data = rrl::io::LoadPrefab("assets/models/rungholt/rungholt.obj");
-    engine.scene.PreloadPrefabBlueprint("rungholt_city", std::move(rungholt_data));
+    engine.asset.PreloadPrefabBlueprint("rungholt_city", std::move(rungholt_data));
     rrl::ObjectID city_instance = engine.scene.SpawnPrefab("rungholt_city");
     engine.tf.SetLocalPosition(city_instance, glm::vec3(0.0f, 0.0f, 0.0f));
     engine.tf.SetLocalScale(city_instance, glm::vec3(0.1f));

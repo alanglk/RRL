@@ -2,8 +2,8 @@
 
 #include "RRL/camera/CameraSystem.hpp"
 #include "RRL/camera/CameraComponents.hpp"
-#include "RRL/rhi/RHIBackend.hpp"
 
+#include "RRL/scene/SceneManager.hpp"
 #include "RRL/tf/TFComponents.hpp"
 #include "RRL/tf/TransformTree.hpp"
 
@@ -61,7 +61,7 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
         spatial_changed = spatial_changed || (runtime.cached_tf_version != world_tf.version);
         intrinsic_changed = intrinsic_changed || (runtime.cached_ndc_target != ndc_target);
 
-        // Skip entity
+        // Skip entitym_ctx->
         if (!spatial_changed && !intrinsic_changed) {
             continue; 
         }
@@ -165,7 +165,7 @@ entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& mod
     }
     
     // Add default root transform
-    entt::entity entity = registry.create();
+    entt::entity entity = rrl::scene::SpawnObject(registry);
     tf::AddTransform(registry, entity);
     
     // intrinsic_dirty is true by default in the struct.
@@ -175,9 +175,7 @@ entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& mod
 }
 void DestroyCamera(entt::registry& registry, entt::entity cam_entity) {
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "DestroyCamera failed: Entity lacks a CameraComponent!");
-    if (registry.valid(cam_entity)) {
-        registry.destroy(cam_entity);
-    }
+    rrl::scene::DestroyObject(registry, cam_entity);
 }
 void DestroyAllCameras(entt::registry& registry) {
     // Copy to avoid iterator invalidation during destruction 

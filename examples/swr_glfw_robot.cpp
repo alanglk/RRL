@@ -148,7 +148,7 @@ private:
         robot_prefab.root_nodes.push_back(std::move(chassis_node));
         
         // Cache the blueprint through the Scene Module
-        engine.scene.PreloadPrefabBlueprint(robot_prefab_id, std::move(robot_prefab));
+        engine.asset.PreloadPrefabBlueprint(robot_prefab_id, std::move(robot_prefab));
     }
 
     // Robot private attribs 
@@ -263,7 +263,7 @@ int main() {
     // Setup World objects
     LOG_INFO("[RRL Engine] Loading assets...");
     rrl::io::IOPrefab alien_data = rrl::io::LoadPrefab("assets/models/space_kit/Models/OBJ format/alien.obj");
-    engine.scene.PreloadPrefabBlueprint("alien", std::move(alien_data));
+    engine.asset.PreloadPrefabBlueprint("alien", std::move(alien_data));
     rrl::ObjectID alien = engine.scene.SpawnPrefab("alien");
     engine.tf.SetLocalPosition(alien, glm::vec3(5.0f, 0.0f, 0.0f));
     engine.tf.SetLocalScale(alien, glm::vec3(5.0f));

@@ -6,8 +6,8 @@
 
 #include "RRL/RRLTypes.hpp"
 #include "RRL/scene/SceneTypes.hpp"
-#include "RRL/io/PrefabIO.hpp"
 
+#include <glm/glm.hpp>
 
 namespace rrl {
 
@@ -44,11 +44,6 @@ public:
 
 
     // --- Prefabs -----------------------------------------------------
-    /**
-     * @brief Takes ownership of raw prefab data, uploads assets to VRAM, 
-     * and caches the lightweight blueprint.
-     */
-    void PreloadPrefabBlueprint(const rrl::scene::PrefabID& blueprint_id, rrl::io::IOPrefab&& prefab_data);
     /**
      * @brief Instantiates a prefab or any nested sub-prefab using dot-notation.
      * Examples: 

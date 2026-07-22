@@ -4,6 +4,7 @@
 #include "RRL/EngineContext.hpp"
 
 #include "RRL/asset/AssetManager.hpp"
+#include "RRL/asset/PrefabBlueprintManager.hpp"
 #include "RRL/EnttCasting.hpp"
 
 
@@ -14,6 +15,7 @@ namespace rrl {
 // --- Constructor / Destructor ------------------------------------
 AssetModule::AssetModule(EngineContext* ctx): m_ctx(ctx) {
     rrl::asset::InitializeAssetManager(m_ctx->registry);
+    rrl::asset::InitializePrefabManager(m_ctx->registry); // For managing complete blueprints
 }
 AssetModule::~AssetModule() {
     // This automatically frees asset allocated RHI memory
@@ -112,6 +114,17 @@ void AssetModule::BindMaterialTexture(AssetID material_asset, AssetID texture_as
                  rrl::asset::MaterialTextureType texture_type) {
     rrl::asset::BindMaterialTexture(m_ctx->registry, ToEntt(material_asset), ToEntt(texture_asset), texture_type);
 }
+
+// --- Prefabs -----------------------------------------------------
+void AssetModule::PreloadPrefabBlueprint(const rrl::asset::PrefabID& blueprint_id, rrl::io::IOPrefab&& prefab_data) {
+    rrl::asset::PreloadPrefabBlueprint(m_ctx->registry, blueprint_id, std::move(prefab_data));
+}
+/*
+// TODO:
+void AssetModule::UnloadPrefabBlueprint(const rrl::asset::PrefabID& blueprint_id) {
+    rrl::asset::UnloadPrefabBlueprint(m_ctx->registry, blueprint_id);
+}
+*/
 
 
 // --- UI Assets ---------------------------------------------------

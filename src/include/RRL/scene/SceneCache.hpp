@@ -3,6 +3,9 @@
 
 #include "RRL/scene/SceneEnvironment.hpp"
 
+#include <entt/entt.hpp>
+#include <unordered_set>
+
 namespace rrl::scene {
 
 
@@ -15,6 +18,7 @@ struct SceneCache {
     // Environment rendering data
     SceneEnvironment environment;
 
+    std::unordered_set<entt::entity> active_objects;
 };
     
 

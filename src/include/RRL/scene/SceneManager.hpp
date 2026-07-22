@@ -17,7 +17,22 @@ namespace rrl::scene {
  *      also calls the Prefab manager initialization function.
  */
 void InitializeSceneManager(entt::registry& registry);
+/**
+ * @brief Spawns an empty object on the scene.
+ */
+entt::entity SpawnObject(entt::registry& registry);
+/**
+ * @brief Destroys an object from the scene.
+ */
+void DestroyObject(entt::registry& registry, entt::entity world_object);
+/**
+ * @brief Clears the scene.
+ */
+void DestroyAllObjects(entt::registry& registry);
 
+
+
+// --- Environment -------------------------------------------------
 /**
  * @brief Internal setters and getters for the Scene Environment.
  */

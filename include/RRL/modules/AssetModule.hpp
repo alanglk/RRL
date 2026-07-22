@@ -11,6 +11,7 @@
 #include "RRL/rhi/RHITypes.hpp"
 #include "RRL/RRLTypes.hpp"
 
+#include "RRL/io/PrefabIO.hpp" // For prefab loading types
 
 namespace rrl {
     
@@ -129,6 +130,18 @@ public:
                      rrl::asset::MaterialTextureType texture_type = rrl::asset::MaterialTextureType::ALBEDO);
 
 
+    // --- Prefabs -----------------------------------------------------
+    /**
+     * @brief Takes ownership of raw prefab data, uploads assets to VRAM, 
+     * and caches the lightweight blueprint.
+     */
+    void PreloadPrefabBlueprint(const rrl::asset::PrefabID& blueprint_id, rrl::io::IOPrefab&& prefab_data);
+
+    // TODO:
+    // void UnloadPrefabBlueprint(const rrl::asset::PrefabID& blueprint_id) -> Will be implemented on future versions
+
+
+    
     // --- UI Assets ---------------------------------------------------
     /**
      * @brief Binds a texture asset directly to a 2D UI / Screen entity.

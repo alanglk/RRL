@@ -162,6 +162,7 @@ set(RRL_SOURCES
 
     # Asset functions implementations
     src/asset/AssetManager.cpp
+    src/asset/PrefabBlueprintManager.cpp
     src/asset/SynchronizationSystems.cpp
 
     # Camera functions implementations
@@ -171,7 +172,8 @@ set(RRL_SOURCES
     src/rhi/RHI.cpp
 
     # Scene functions implementations
-    src/scene/PrefabManager.cpp
+    src/scene/SceneManager.cpp
+    src/scene/PrefabInstanceManager.cpp
 
     # TF functions implementations
     src/tf/TransformTree.cpp
