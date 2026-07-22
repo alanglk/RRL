@@ -35,12 +35,12 @@ public:
      * @brief Spawns a raw, empty world object.
      */
     ObjectID SpawnObject();
-
     /**
      * @brief Destroys a world object and cleans up its components.
      */
     void DestroyObject(ObjectID object);
 
+    // void ClearScene();
 
 
     // --- Prefabs -----------------------------------------------------
@@ -49,7 +49,6 @@ public:
      * and caches the lightweight blueprint.
      */
     void PreloadPrefabBlueprint(const rrl::scene::PrefabID& blueprint_id, rrl::io::IOPrefab&& prefab_data);
-
     /**
      * @brief Instantiates a prefab or any nested sub-prefab using dot-notation.
      * Examples: 
@@ -58,22 +57,30 @@ public:
      * @return ObjectID The Root Entity, or NULL_OBJECT if the blueprint isn't cached.
      */
     ObjectID SpawnPrefab(const rrl::scene::PrefabID& blueprint_id);
-
     /**
      * @brief Destroys a spawned prefab.
      */
     void DestroyPrefab(ObjectID prefab_object, bool force_asset_deletion = false);
 
 
+    // --- Scene Environment -------------------------------------------
+    /**
+     * @brief Set the scene environment color.
+     */
+    void SetEnvironmentColor(const glm::vec4& color);
+    /**
+     * @brief Set a scene cube map texture.
+     */
+    void SetEnvironmentCubemap(rrl::AssetID cubemap_asset);
+    /**
+     * @brief Set a scene spherical stiched texture.
+     */
+    void SetEnvironmentEquirectangular(rrl::AssetID texture_asset);
+    /**
+     * @brief Set a scene custom mesh-projected texture.
+     */
+    void SetEnvironmentCustomMesh(rrl::AssetID texture_asset, rrl::AssetID mesh_asset);
 
-    // --- (Future) Scene Management -----------------------------------
-    // void ClearScene();
-    // void DontDestroyOnLoad(ObjectID object);
-
-    // --- (Future) Global Environment ---------------------------------
-    // void SetSkybox(AssetID cubemap_texture);
-    // void SetAmbientLight(const glm::vec3& color, float intensity);
-    // void SetDirectionalLight(const glm::vec3& direction, const glm::vec3& color);
 
     // --- (Future) World Queries --------------------------------------
     // ObjectID FindObjectByName(const std::string& name);

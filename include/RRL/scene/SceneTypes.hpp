@@ -1,11 +1,12 @@
 // RRL/include/scene/SceneTypes.hpp
 #pragma once
 
+
+#include <cstdint>
 #include <string>
 
 
 namespace rrl::scene {
-
 
 /*
  * A prefab can be seen as a object hierarchy of sub-meshes. 

@@ -36,6 +36,7 @@ void SceneModule::DestroyObject(ObjectID object) {
 void SceneModule::PreloadPrefabBlueprint(const scene::PrefabID& blueprint_id, rrl::io::IOPrefab&& prefab_data) {
     rrl::scene::PreloadPrefabBlueprint(m_ctx->registry, blueprint_id, std::move(prefab_data));
 }
+
 ObjectID SceneModule::SpawnPrefab(const scene::PrefabID& blueprint_id) {
     entt::entity root_entity = rrl::scene::SpawnPrefab(m_ctx->registry, blueprint_id);
     return ToObjectID(root_entity);
@@ -43,6 +44,43 @@ ObjectID SceneModule::SpawnPrefab(const scene::PrefabID& blueprint_id) {
 void SceneModule::DestroyPrefab(ObjectID prefab_object, bool force_asset_deletion) {
     rrl::scene::DestroyPrefab(m_ctx->registry, ToEntt(prefab_object), force_asset_deletion);
 }
+
+
+// --- Scene Environment -------------------------------------------
+void SceneModule::SetEnvironmentColor(const glm::vec4& color) {
+    if (!m_ctx->registry.ctx().contains<scene::SceneEnvironment>()) {
+        m_ctx->registry.ctx().emplace<scene::SceneEnvironment>();
+    }
+    auto& env = m_ctx->registry.ctx().get<scene::SceneEnvironment>();
+    env.type = scene::EnvironmentType::SOLID_COLOR;
+    env.clear_color = color;
+}
+void SceneModule::SetEnvironmentEquirectangular(rrl::AssetID texture_asset) {
+    if (!m_ctx->registry.ctx().contains<scene::SceneEnvironment>()) {
+        m_ctx->registry.ctx().emplace<scene::SceneEnvironment>();
+    }
+    auto& env = m_ctx->registry.ctx().get<scene::SceneEnvironment>();
+    env.type = scene::EnvironmentType::SKYBOX_EQUIRECTANGULAR;
+    env.environment_texture = texture_asset;
+}
+void SceneModule::SetEnvironmentCubemap(rrl::AssetID cubemap_asset) {
+    if (!m_ctx->registry.ctx().contains<scene::SceneEnvironment>()) {
+        m_ctx->registry.ctx().emplace<scene::SceneEnvironment>();
+    }
+    auto& env = m_ctx->registry.ctx().get<scene::SceneEnvironment>();
+    env.type = scene::EnvironmentType::SKYBOX_CUBEMAP;
+    env.environment_texture = cubemap_asset;
+}
+void SceneModule::SetEnvironmentCustomMesh(rrl::AssetID texture_asset, rrl::AssetID mesh_asset) {
+    if (!m_ctx->registry.ctx().contains<scene::SceneEnvironment>()) {
+        m_ctx->registry.ctx().emplace<scene::SceneEnvironment>();
+    }
+    auto& env = m_ctx->registry.ctx().get<scene::SceneEnvironment>();
+    env.type = scene::EnvironmentType::CUSTOM_MESH;
+    env.environment_texture = texture_asset;
+    env.custom_mesh = mesh_asset;
+}
+
 
 
 } // namespace rrl
