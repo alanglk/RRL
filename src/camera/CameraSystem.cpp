@@ -100,25 +100,38 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
                     if (ndc_target.y_direction == NDCYDirection::DOWN) { proj[1][1] *= -1.0f; }
                 }
                 else if constexpr (std::is_same_v<T, PinholeModel>) {
-                    float w = static_cast<float>(model.width_px); float h = static_cast<float>(model.height_px);
+                    float w = static_cast<float>(model.width_px); 
+                    float h = static_cast<float>(model.height_px);
+                    
                     proj = glm::mat4(0.0f);
+                    
+                    // Focal Lengths
                     proj[0][0] = (2.0f * model.fx) / w;
                     proj[1][1] = (2.0f * model.fy) / h;
-                    proj[2][0] = (2.0f * model.cx) / w - 1.0f;
-                    proj[2][1] = (2.0f * model.cy) / h - 1.0f;
-                    proj[2][3] = 1.0f;
                     
+                    // Principal Point Offsets 
+                    // Sign inversion on cx vs cy ensures OpenGL -Z forward math holds true.
+                    proj[2][0] = 1.0f - (2.0f * model.cx) / w; 
+                    proj[2][1] = (2.0f * model.cy) / h - 1.0f; 
+                    
+                    // Coordinate System Depth (W_c = -Z)
+                    proj[2][3] = -1.0f;
+                    
+                    // Depth Clipping (Mapping -Z view space to target NDC Depth)
                     if (ndc_target.depth_range == NDCDepth::ZERO_TO_ONE) {
-                        proj[2][2] = model.z_far / (model.z_far - model.z_near);
+                        proj[2][2] = -model.z_far / (model.z_far - model.z_near);
                         proj[3][2] = -(model.z_far * model.z_near) / (model.z_far - model.z_near);
-                    } else {
-                        proj[2][2] = (model.z_far + model.z_near) / (model.z_far - model.z_near);
+                    } else { // MINUS_ONE_TO_ONE
+                        proj[2][2] = -(model.z_far + model.z_near) / (model.z_far - model.z_near);
                         proj[3][2] = -(2.0f * model.z_far * model.z_near) / (model.z_far - model.z_near);
                     }
-                    // Pinhole inherently maps +Y DOWN in image coordinates. 
-                    // So we MUST flip if the target wants Y UP (like OpenGL).
-                    if (ndc_target.y_direction == NDCYDirection::UP) {
-                        proj[1][1] *= -1.0f; proj[2][1] *= -1.0f;
+                    
+                    // Target Y-Direction Adjustment
+                    // Because this matrix is now correctly mapped to standard OpenGL eye space 
+                    // (Right-Handed, Y-UP natively), we must flip it if the target wants Y-DOWN.
+                    if (ndc_target.y_direction == NDCYDirection::DOWN) {
+                        proj[1][1] *= -1.0f; 
+                        proj[2][1] *= -1.0f;
                     }
                 }
                 return proj;
