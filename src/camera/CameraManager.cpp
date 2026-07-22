@@ -1,6 +1,6 @@
-// RRL/src/camera/CameraSystem.cpp
+// RRL/src/camera/CameraManager.cpp
 
-#include "RRL/camera/CameraSystem.hpp"
+#include "RRL/camera/CameraManager.hpp"
 #include "RRL/camera/CameraComponents.hpp"
 
 #include "RRL/scene/SceneManager.hpp"
@@ -38,12 +38,24 @@ static glm::quat CalculateLookAtRotation(const glm::vec3& eye, const glm::vec3& 
     return glm::quat_cast(glm::mat3(forward, left, true_up));
 }
 
-
-
-// --- Camera Runtime ----------------------------------------------
+// --- Lifecycle ---------------------------------------------------
+void InitializeCameraManager(entt::registry& registry) {
+    registry.ctx().emplace<CameraCache>();
+}
 void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
-    auto view = registry.view<CameraComponent, tf::TFWorldTransformComponent>();
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
 
+    // Sort cameras by priority
+    auto& cache = registry.ctx().get<CameraCache>();
+    if (cache.priority_dirty) {
+        registry.sort<CameraComponent>([](const CameraComponent& lhs, const CameraComponent& rhs) {
+            return lhs.render_priority < rhs.render_priority;
+        });
+        cache.priority_dirty = false;
+    }
+
+    // Update camera runtime matrices
+    auto view = registry.view<CameraComponent, tf::TFWorldTransformComponent>();
     for (auto entity : view) {
         auto& cam = view.get<CameraComponent>(entity);
         const auto& world_tf = view.get<tf::TFWorldTransformComponent>(entity);
@@ -146,11 +158,9 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
     }
 
 }
-
-
-
-// --- Lifecycle ---------------------------------------------------
 entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& model, rhi::RenderTargetHandle target_fbo, rhi::RHIRenderLayer layer) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    auto& cache = registry.ctx().get<CameraCache>();
 
     // Ensure no other camera points to the same target_fbo (ignoring TARGET_NULL)
     auto view = registry.view<CameraComponent>();
@@ -169,15 +179,18 @@ entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& mod
     tf::AddTransform(registry, entity);
     
     // intrinsic_dirty is true by default in the struct.
-    registry.emplace<CameraComponent>(entity, model, true, target_fbo, layer );
-    
+    uint32_t render_priority = cache.next_priority++;
+    auto& cam = registry.emplace<CameraComponent>(entity, model, true, target_fbo, layer, render_priority);
+    cache.priority_dirty = true;
     return entity;
 }
 void DestroyCamera(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "DestroyCamera failed: Entity lacks a CameraComponent!");
     rrl::scene::DestroyObject(registry, cam_entity);
 }
 void DestroyAllCameras(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     // Copy to avoid iterator invalidation during destruction 
     std::vector<entt::entity> cameras = GetAllCameras(registry);
     for (auto e : cameras) {
@@ -189,6 +202,7 @@ void DestroyAllCameras(entt::registry& registry) {
 
 // --- Setters -----------------------------------------------------
 void SetCameraModel(entt::registry& registry, entt::entity cam_entity, const CameraModelVariant& model) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraModel failed: Entity lacks a CameraComponent!");
     
     auto& cam = registry.get<CameraComponent>(cam_entity);
@@ -196,9 +210,11 @@ void SetCameraModel(entt::registry& registry, entt::entity cam_entity, const Cam
     cam.intrinsic_dirty = true; // Triggers the projection rebuild on the next tick
 }
 void SetPrimaryCamera(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     SetCameraTarget(registry, cam_entity, rhi::TARGET_MAIN);
 }
 void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::RenderTargetHandle target_fbo) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraTarget failed: Entity lacks a CameraComponent!");
     
     // Ensure no other camera points to the same target_fbo (ignoring TARGET_NULL)
@@ -213,16 +229,29 @@ void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::Ren
     }
 }
 void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RHIRenderLayer layer) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraTarget failed: Entity lacks a CameraComponent!");
     auto& cam = registry.get<CameraComponent>(cam_entity);
     cam.culling_mask = layer;
 }
+void SetCameraPriority(entt::registry& registry, entt::entity cam_entity, uint32_t priority) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraPriority failed: Entity lacks a CameraComponent!");
+    auto& cache = registry.ctx().get<CameraCache>();
+    auto& cam = registry.get<CameraComponent>(cam_entity);
+    if (cam.render_priority != priority) {
+        cam.render_priority = priority;
+        cache.priority_dirty = true;
+    }
+}
 void SetCameraPositionAndLookAt(entt::registry& registry, entt::entity cam_entity, const glm::vec3& pos, const glm::vec3& target, const glm::vec3& world_up) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     glm::quat rotation = CalculateLookAtRotation(pos, target, world_up);
     tf::SetLocalPosition(registry, cam_entity, pos);
     tf::SetLocalRotation(registry, cam_entity, rotation);
 }
 void SetCameraLookAt(entt::registry& registry, entt::entity cam_entity, const glm::vec3& target, const glm::vec3& world_up) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     glm::vec3 current_pos = tf::GetLocalPosition(registry, cam_entity);
     glm::quat rotation = CalculateLookAtRotation(current_pos, target, world_up);
     tf::SetLocalRotation(registry, cam_entity, rotation);
@@ -232,14 +261,17 @@ void SetCameraLookAt(entt::registry& registry, entt::entity cam_entity, const gl
 
 // --- Getters -----------------------------------------------------
 std::vector<entt::entity> GetAllCameras(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     auto view = registry.view<CameraComponent>();
     return std::vector<entt::entity>(view.begin(), view.end());
 }
 CameraModelVariant GetCameraModel(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "GetCameraModel failed: Entity lacks a CameraComponent!");
     return registry.get<CameraComponent>(cam_entity).model;
 }
 entt::entity GetPrimaryCamera(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     auto view = registry.view<CameraComponent>();
     for (auto entity : view) {
         if (view.get<CameraComponent>(entity).target_fbo == rhi::TARGET_MAIN) {
@@ -249,14 +281,17 @@ entt::entity GetPrimaryCamera(entt::registry& registry) {
     return entt::null;
 }
 const glm::mat4& GetViewMatrix(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraRuntimeComponent, "GetViewMatrix failed: Entity lacks a CameraRuntimeComponent!");
     return registry.get<CameraRuntimeComponent>(cam_entity).view_matrix;
 }
 const glm::mat4& GetProjectionMatrix(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraRuntimeComponent, "GetProjectionMatrix failed: Entity lacks a CameraRuntimeComponent!");
     return registry.get<CameraRuntimeComponent>(cam_entity).projection_matrix;
 }
 const glm::mat4& GetViewProjectionMatrix(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraRuntimeComponent, "GetViewProjectionMatrix failed: Entity lacks a CameraRuntimeComponent!");
     return registry.get<CameraRuntimeComponent>(cam_entity).view_projection_matrix;
 }

@@ -1,4 +1,4 @@
-// RRL/src/include/RRL/camera/CameraSystem.hpp
+// RRL/src/include/RRL/camera/CameraManager.hpp
 #pragma once
 
 #include <entt/entt.hpp>
@@ -11,16 +11,16 @@
 
 namespace rrl::camera {
     
-// --- Camera Runtime ----------------------------------------------
+// --- Lifecycle ---------------------------------------------------
+/**
+ * @brief Initializes the camera system.
+ */
+void InitializeCameraManager(entt::registry& registry);
 /**
  * @brief Computes View, Projection, and VP matrices for all cameras based on the target RHI.
  * Should be called once per frame, strictly AFTER tf::UpdateTransformTree.
  */
 void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target);
-
-
-
-// --- Lifecycle ---------------------------------------------------
 /**
  * @brief Spawns a new camera
  * If the target_fbo is set to TARGET_NULL, the camera will be ignoned at the rendering phase.
@@ -56,6 +56,10 @@ void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::Ren
  * @brief Sets the rendering culling mask of the camera
  */
 void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RHIRenderLayer layer);
+/**
+ * @brief Set the camera rendering priority.
+ */
+void SetCameraPriority(entt::registry& registry, entt::entity cam_entity, uint32_t priority);
 /**
  * @brief Sets the given entity as the primary camera, unsetting any other primary cameras.
  */

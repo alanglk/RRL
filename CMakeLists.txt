@@ -166,7 +166,7 @@ set(RRL_SOURCES
     src/asset/SynchronizationSystems.cpp
 
     # Camera functions implementations
-    src/camera/CameraSystem.cpp
+    src/camera/CameraManager.cpp
 
     # RHI API main implementation
     src/rhi/RHI.cpp

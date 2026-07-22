@@ -157,6 +157,7 @@ static void RenderFrame(entt::registry& registry) {
     // 3D Rendering (loop for each camera and for each mesh (sub mesh material rendering))
     auto mesh_view = registry.view<tf::TFWorldTransformComponent, rrl::asset::MeshLinkage>();
     auto cam_view = registry.view<camera::CameraComponent, camera::CameraRuntimeComponent>();
+    cam_view.use<camera::CameraComponent>(); // Use CameraComponent as iteration drive to used the sorted view.
     for (auto cam_entity : cam_view) {
         const auto& cam = cam_view.get<camera::CameraComponent>(cam_entity);
         const auto& cam_rt = cam_view.get<camera::CameraRuntimeComponent>(cam_entity);

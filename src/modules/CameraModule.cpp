@@ -1,7 +1,7 @@
 // RRL/src/modules/CameraModule.cpp
 
 #include "RRL/modules/CameraModule.hpp"
-#include "RRL/camera/CameraSystem.hpp"
+#include "RRL/camera/CameraManager.hpp"
 
 #include "RRL/EngineContext.hpp"
 #include "RRL/EnttCasting.hpp"
@@ -10,7 +10,9 @@ namespace rrl {
 
 
 // --- Constructor / Destructor ------------------------------------
-CameraModule::CameraModule(EngineContext* ctx): m_ctx(ctx) {}
+CameraModule::CameraModule(EngineContext* ctx): m_ctx(ctx) {
+    rrl::camera::InitializeCameraManager(m_ctx->registry);
+}
 CameraModule::~CameraModule() {
     if (m_ctx != nullptr) {
         DestroyAllCameras();
@@ -43,15 +45,15 @@ void CameraModule::DestroyAllCameras() {
 void CameraModule::SetCameraModel(ObjectID cam_obj, const rrl::camera::CameraModelVariant& model) {
     rrl::camera::SetCameraModel(m_ctx->registry, ToEntt(cam_obj), model);
 }
-
 void CameraModule::SetCameraTarget(ObjectID cam_obj, rhi::RenderTargetHandle target_fbo) {
     rrl::camera::SetCameraTarget(m_ctx->registry, ToEntt(cam_obj), target_fbo);
 }
-
 void CameraModule::SetCameraLayer(ObjectID cam_obj, rhi::RHIRenderLayer layer) {
     rrl::camera::SetCameraLayer(m_ctx->registry, ToEntt(cam_obj), layer);
 }
-
+void CameraModule::SetCameraRenderPriority(ObjectID cam_obj, uint32_t render_priority) {
+    rrl::camera::SetCameraPriority(m_ctx->registry, ToEntt(cam_obj), render_priority);
+}
 void CameraModule::SetPrimaryCamera(ObjectID cam_obj) {
     rrl::camera::SetPrimaryCamera(m_ctx->registry, ToEntt(cam_obj));
 }

@@ -16,7 +16,7 @@ namespace rrl::camera {
  */
 struct CameraComponent {
     CameraModelVariant model { PerspectiveModel{} };
-    // Flag to know if the camera intrinsics have changed 
+    // Flag to know if the camera intrinsics have changed (projection computation)
     bool intrinsic_dirty { true };
 
     // Flag to tell the RHI which camera should render onto the main screen buffer. 
@@ -26,6 +26,11 @@ struct CameraComponent {
     
     // What layers can this camera see?
     rhi::RHIRenderLayer culling_mask { rhi::RHIRenderLayer::LAYER_ALL };
+
+    // This specifies the camera render priority:
+    //      Low value   -> Higher priority
+    //      High value  -> Lower priority
+    uint32_t render_priority = 0; 
 };
 
 
@@ -44,6 +49,15 @@ struct CameraRuntimeComponent {
     
     // Last used TF version to compute the runtime matrices
     uint32_t cached_tf_version { 0xFFFFFFFF }; 
+};
+
+
+/**
+ * @brief Camera system general runtime cache.
+ */
+struct CameraCache {
+    bool priority_dirty { false };  // Flag to know if any camera priority has changed (reordering).
+    uint32_t next_priority { 0 };   // Auto-incrementing counter for default spawn priority
 };
 
 

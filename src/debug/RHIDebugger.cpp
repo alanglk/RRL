@@ -7,7 +7,7 @@
 
 #include "RRL/tf/TransformTree.hpp"
 #include "RRL/asset/AssetManager.hpp"
-#include "RRL/camera/CameraSystem.hpp"
+#include "RRL/camera/CameraManager.hpp"
 
 
 

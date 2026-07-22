@@ -2,6 +2,7 @@
 #pragma once
 
 #include <RRL/rrl_export.h>
+#include <cstdint>
 
 #include "RRL/camera/CameraModels.hpp"
 #include "RRL/camera/CameraConventions.hpp"
@@ -75,6 +76,12 @@ public:
      * @brief Sets the rendering culling mask of the camera
      */
     void SetCameraLayer(ObjectID cam_obj, rhi::RHIRenderLayer layer);
+    /**
+     * @brief Sets the rendering priority of the camera.
+     * Low value    -> Higher priority
+     * High value   -> Lower priority
+     */
+    void SetCameraRenderPriority(ObjectID cam_obj, uint32_t render_priority);
     /**
      * @brief Sets the given entity as the primary camera, unsetting any other primary cameras.
      */
