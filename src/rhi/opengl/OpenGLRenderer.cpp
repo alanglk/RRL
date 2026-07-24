@@ -141,13 +141,77 @@ static GLenum MapTopology(rrl::asset::MeshTopology topology) {
     }
 }
 
+// Helper to determines VRAM Allocation (glTextureStorage2D)
+static GLenum MapGLInternalFormat(rrl::asset::ImageAssetType type, rrl::asset::ImageChannelLayout channels, bool is_depth = false) {
+    if (is_depth) return GL_DEPTH24_STENCIL8; // Standard 24-bit depth, 8-bit stencil
+
+    switch (channels) {
+        case rrl::asset::ImageChannelLayout::CH_1:
+            if (type == rrl::asset::ImageAssetType::UINT8)   return GL_R8;
+            if (type == rrl::asset::ImageAssetType::UINT16)  return GL_R16;
+            if (type == rrl::asset::ImageAssetType::FLOAT32) return GL_R32F;
+            break;
+        case rrl::asset::ImageChannelLayout::CH_2:
+            if (type == rrl::asset::ImageAssetType::UINT8)   return GL_RG8;
+            if (type == rrl::asset::ImageAssetType::UINT16)  return GL_RG16;
+            if (type == rrl::asset::ImageAssetType::FLOAT32) return GL_RG32F;
+            break;
+        case rrl::asset::ImageChannelLayout::CH_3:
+            if (type == rrl::asset::ImageAssetType::UINT8)   return GL_RGB8;
+            if (type == rrl::asset::ImageAssetType::UINT16)  return GL_RGB16;
+            if (type == rrl::asset::ImageAssetType::FLOAT32) return GL_RGB32F;
+            break;
+        case rrl::asset::ImageChannelLayout::CH_4:
+            if (type == rrl::asset::ImageAssetType::UINT8)   return GL_RGBA8;
+            if (type == rrl::asset::ImageAssetType::UINT16)  return GL_RGBA16;
+            if (type == rrl::asset::ImageAssetType::FLOAT32) return GL_RGBA32F;
+            break;
+    }
+    return GL_RGB8; // Safe fallback
+}
+
+// Helper to determines CPU Data Semantic Layout (glTextureSubImage2D)
+static GLenum MapGLUploadFormat(rrl::asset::ImageColorLayout color_layout, rrl::asset::ImageChannelLayout channels) {
+    // Prioritize explicit color layout
+    switch (color_layout) {
+        case rrl::asset::ImageColorLayout::GRAY: return GL_RED;
+        case rrl::asset::ImageColorLayout::RGB:  return GL_RGB;
+        case rrl::asset::ImageColorLayout::BGR:  return GL_BGR;
+        case rrl::asset::ImageColorLayout::RGBA: return GL_RGBA;
+        case rrl::asset::ImageColorLayout::BGRA: return GL_BGRA;
+        case rrl::asset::ImageColorLayout::HSV:  return GL_RGB;
+        case rrl::asset::ImageColorLayout::NONE: default: break;
+    }
+
+    // Fallback to channel count for raw math data
+    switch (channels) {
+        case rrl::asset::ImageChannelLayout::CH_1: return GL_RED;
+        case rrl::asset::ImageChannelLayout::CH_2: return GL_RG;
+        case rrl::asset::ImageChannelLayout::CH_3: return GL_RGB;
+        case rrl::asset::ImageChannelLayout::CH_4: return GL_RGBA;
+        default: return GL_RGB;
+    }
+}
+
+// Helper to determine CPU Data Primitive Type (glTextureSubImage2D)
+static GLenum MapGLUploadType(rrl::asset::ImageAssetType type) {
+    switch (type) {
+        case rrl::asset::ImageAssetType::UINT8:   return GL_UNSIGNED_BYTE;
+        case rrl::asset::ImageAssetType::UINT16:  return GL_UNSIGNED_SHORT;
+        case rrl::asset::ImageAssetType::FLOAT32: return GL_FLOAT;
+        default: return GL_UNSIGNED_BYTE;
+    }
+}
+
 
 // Fordward declarations
-static RenderTargetHandle CreateRenderTarget(entt::registry& registry, uint32_t width, uint32_t height); 
+static RenderTargetHandle CreateRenderTarget(entt::registry& registry, const PhysicalRenderTargetDescriptor& desc); 
+static TextureHandle CreateRenderTexture(entt::registry& registry, uint32_t width, uint32_t height, rrl::asset::ImageAssetType data_type, rrl::asset::ImageChannelLayout channels, bool is_depth, uint32_t array_layers);
 static void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle handle);
 static void DestroyTexture(entt::registry& registry, TextureHandle handle);
 static void DestroyMaterial(entt::registry& registry, MaterialHandle handle);
 static void DestroyMesh(entt::registry& registry, MeshHandle handle);
+
 
 // --- Lifecycle ---------------------------------------------------
 static bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t render_height, const RHIWindow* window) {
@@ -218,8 +282,17 @@ static bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t
     
 
     // Initialize TARGET_MAIN
-    ctx.next_target_handle = TARGET_MAIN; // Which equals 0
-    CreateRenderTarget(registry, render_width, render_height);
+    ctx.next_target_handle = BACKEND_TARGET_MAIN; // Which equals 0
+    TextureHandle main_color = CreateRenderTexture(registry, render_width, render_height, rrl::asset::ImageAssetType::UINT8, rrl::asset::ImageChannelLayout::CH_3, false, 1);
+    TextureHandle main_depth = CreateRenderTexture(registry, render_width, render_height, rrl::asset::ImageAssetType::UINT8, rrl::asset::ImageChannelLayout::CH_1, true, 1);
+
+    PhysicalRenderTargetDescriptor main_desc;
+    main_desc.width = render_width;
+    main_desc.height = render_height;
+    main_desc.color_attachments.push_back(main_color);
+    main_desc.depth_stencil_attachment = main_depth;
+    CreateRenderTarget(registry, main_desc);
+
     glCreateVertexArrays(1, &ctx.ui_empty_vao);
 
     // Load shaders
@@ -306,13 +379,14 @@ static void RenderFrame(entt::registry& registry) {
 
     // 3D Scene Rendering
     auto mesh_view = registry.view<tf::TFWorldTransformComponent, rrl::asset::MeshLinkage>();
-    auto cam_view = registry.view<camera::CameraComponent, camera::CameraRuntimeComponent>();
+    auto cam_view = registry.view<camera::CameraComponent, camera::CameraRuntimeComponent, camera::CameraOutputComponent>();
     cam_view.use<camera::CameraComponent>(); // Use CameraComponent as iteration drive to used the sorted view.
     for (auto cam_entity : cam_view) {
         const auto& cam = cam_view.get<camera::CameraComponent>(cam_entity);
         const auto& cam_rt = cam_view.get<camera::CameraRuntimeComponent>(cam_entity);
+        const auto& cam_out = cam_view.get<camera::CameraOutputComponent>(cam_entity);
 
-        auto target_it = ctx.render_targets.find(cam.target_fbo);
+        auto target_it = ctx.render_targets.find(cam_out.target_fbo);
         if (target_it == ctx.render_targets.end()) continue;
         
         // Bind offscreen canvas target
@@ -326,7 +400,7 @@ static void RenderFrame(entt::registry& registry) {
             const auto& world_tf = mesh_view.get<tf::TFWorldTransformComponent>(physical_entity);
             
             if (!registry.valid(linkage.mesh_asset) || !registry.all_of<rrl::asset::MeshRuntimeComponent>(linkage.mesh_asset)) continue;
-            if ((cam.culling_mask & linkage.layer_mask) == rhi::RHIRenderLayer::LAYER_NONE) continue;
+            if ((cam.culling_mask & linkage.layer_mask) == rhi::RHIRenderLayerMask::LAYER_NONE) continue;
 
             MeshHandle mesh_handle = registry.get<rrl::asset::MeshRuntimeComponent>(linkage.mesh_asset).handle;
             if (ctx.meshes.find(mesh_handle) == ctx.meshes.end()) continue;
@@ -374,7 +448,7 @@ static void RenderFrame(entt::registry& registry) {
                         glBindBufferBase(GL_UNIFORM_BUFFER, 0, mat_it->second.ubo);
                     }
 
-                    if (mat_rt.albedo_handle != rhi::TEXTURE_NULL && ctx.textures.find(mat_rt.albedo_handle) != ctx.textures.end()) {
+                    if (mat_rt.albedo_handle != rhi::BACKEND_TEXTURE_NULL && ctx.textures.find(mat_rt.albedo_handle) != ctx.textures.end()) {
                         glBindTextureUnit(0, ctx.textures[mat_rt.albedo_handle].id);
                         mat_shader->SetInt("u_HasAlbedo", 1);
                     } else {
@@ -388,7 +462,7 @@ static void RenderFrame(entt::registry& registry) {
     }
 
     // 2D UI Rendering
-    auto target_main_it = ctx.render_targets.find(TARGET_MAIN);
+    auto target_main_it = ctx.render_targets.find(BACKEND_TARGET_MAIN);
     if (target_main_it != ctx.render_targets.end()) {
         const GLRenderTarget& main_rt = target_main_it->second;
         glBindFramebuffer(GL_FRAMEBUFFER, main_rt.fbo);
@@ -408,7 +482,7 @@ static void RenderFrame(entt::registry& registry) {
             const auto& linkage = ui_view.get<rrl::asset::TextureLinkage>(ui_entity);
             
             if (!registry.valid(linkage.texture_asset) || !registry.all_of<rrl::asset::TextureRuntimeComponent>(linkage.texture_asset)) continue;
-            if ((linkage.layer_mask & rhi::RHIRenderLayer::LAYER_UI) == rhi::RHIRenderLayer::LAYER_NONE) continue;
+            if ((linkage.layer_mask & rhi::RHIRenderLayerMask::LAYER_UI) == rhi::RHIRenderLayerMask::LAYER_NONE) continue;
             
             rhi::TextureHandle tex_handle = registry.get<rrl::asset::TextureRuntimeComponent>(linkage.texture_asset).handle;
             auto tex_it = ctx.textures.find(tex_handle);
@@ -434,26 +508,78 @@ static void RenderFrame(entt::registry& registry) {
 
 
 // --- Render Targets (FBOs) ---------------------------------------
-static RenderTargetHandle CreateRenderTarget(entt::registry& registry, uint32_t width, uint32_t height) {
+static TextureHandle CreateRenderTexture(entt::registry& registry, uint32_t width, uint32_t height, 
+                                         rrl::asset::ImageAssetType data_type,
+                                         rrl::asset::ImageChannelLayout channels, 
+                                         bool is_depth, uint32_t array_layers) {
+    RRL_ASSERT(registry.ctx().contains<OpenGLContext>(), "[OpenGL RHI] Backend not initialized!");
+    auto& ctx = registry.ctx().get<OpenGLContext>();
+
+    GLTexture tex;
+    tex.width = width;
+    tex.height = height;
+    
+    // FBOs don't upload data from CPU, so they only need the internal VRAM format
+    GLenum gl_internal_format = MapGLInternalFormat(data_type, channels, is_depth);
+
+    glCreateTextures(GL_TEXTURE_2D, 1, &tex.id);
+    glTextureStorage2D(tex.id, 1, gl_internal_format, width, height);
+
+    glTextureParameteri(tex.id, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTextureParameteri(tex.id, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTextureParameteri(tex.id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(tex.id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    TextureHandle handle = ctx.next_tex_handle++;
+    ctx.textures[handle] = tex;
+    return handle;
+}
+static RenderTargetHandle CreateRenderTarget(entt::registry& registry, const PhysicalRenderTargetDescriptor& desc) {
     RRL_ASSERT(registry.ctx().contains<OpenGLContext>(), "[OpenGL RHI] Backend not initialized!");
     auto& ctx = registry.ctx().get<OpenGLContext>();
     
     GLRenderTarget rt;
-    rt.width = width;
-    rt.height = height;
+    rt.width = desc.width;
+    rt.height = desc.height;
 
     // FBO via DSA
     glCreateFramebuffers(1, &rt.fbo);
 
-    // Create and attach Color Texture (RGB 8-bit)
-    glCreateTextures(GL_TEXTURE_2D, 1, &rt.color_texture);
-    glTextureStorage2D(rt.color_texture, 1, GL_RGB8, width, height);
-    glNamedFramebufferTexture(rt.fbo, GL_COLOR_ATTACHMENT0, rt.color_texture, 0);
+    // Attach Color Textures to the FBO
+    std::vector<GLenum> draw_buffers;
+    for (size_t i = 0; i < desc.color_attachments.size(); ++i) {
+        TextureHandle t_handle = desc.color_attachments[i];
+        if (ctx.textures.find(t_handle) != ctx.textures.end()) {
+            GLuint gl_tex = ctx.textures[t_handle].id;
+            glNamedFramebufferTexture(rt.fbo, GL_COLOR_ATTACHMENT0 + i, gl_tex, 0);
+            
+            // Track the first one for Presentation/GetTargetImage fallback
+            if (i == 0) rt.color_texture = gl_tex; 
+            draw_buffers.push_back(GL_COLOR_ATTACHMENT0 + i);
+        } 
+        else {
+            LOG_WARN("[OpenGL RHI] CreateRenderTarget could not resolve requested texture color attachment for the FBO. Tex handle: {}", t_handle);
+        }
+    }
 
-    // Create and attach Combined Depth-Stencil Texture (24-bit Depth, 8-bit Stencil)
-    glCreateTextures(GL_TEXTURE_2D, 1, &rt.depth_texture);
-    glTextureStorage2D(rt.depth_texture, 1, GL_DEPTH24_STENCIL8, width, height);
-    glNamedFramebufferTexture(rt.fbo, GL_DEPTH_STENCIL_ATTACHMENT, rt.depth_texture, 0);
+    if (!draw_buffers.empty()) {
+        glNamedFramebufferDrawBuffers(rt.fbo, draw_buffers.size(), draw_buffers.data());
+    } else {
+        glNamedFramebufferDrawBuffer(rt.fbo, GL_NONE);
+        glNamedFramebufferReadBuffer(rt.fbo, GL_NONE);
+    }
+
+    // Attach Depth / Stencinl Texture to the FBO
+    if (desc.depth_stencil_attachment != BACKEND_TEXTURE_NULL) {
+        if (ctx.textures.find(desc.depth_stencil_attachment) != ctx.textures.end()) {
+            GLuint gl_depth = ctx.textures[desc.depth_stencil_attachment].id;
+            glNamedFramebufferTexture(rt.fbo, GL_DEPTH_STENCIL_ATTACHMENT, gl_depth, 0);
+            rt.depth_texture = gl_depth;
+        }
+        else {
+            LOG_WARN("[OpenGL RHI] CreateRenderTarget could not resolve requested texture depth/stencil attachment for the FBO. Tex handle: {}", desc.depth_stencil_attachment);
+        }
+    }
 
     RRL_ASSERT(glCheckNamedFramebufferStatus(rt.fbo, GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, 
                "[OpenGL RHI] Failed to create complete Framebuffer Object.");
@@ -471,8 +597,6 @@ static void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle han
     if (it != ctx.render_targets.end()) {
         if (glfwGetCurrentContext() != nullptr) {
             glDeleteFramebuffers(1, &it->second.fbo);
-            glDeleteTextures(1, &it->second.color_texture);
-            glDeleteTextures(1, &it->second.depth_texture);
         }
         ctx.render_targets.erase(it);
     }
@@ -496,41 +620,29 @@ static void UpdateTexture(entt::registry& registry, TextureHandle handle, const 
     glTextureSubImage2D(tex.id, 0, 0, 0, tex.width, tex.height, tex.upload_format, tex.upload_type, image_data.data.data());
 }
 static TextureHandle CreateTexture(entt::registry& registry, const rrl::asset::ImageAsset& image_data) {
-    RRL_ASSERT(registry.ctx().contains<OpenGLContext>(), "[OpenGL RHI] Backend not initialized!");
+RRL_ASSERT(registry.ctx().contains<OpenGLContext>(), "[OpenGL RHI] Backend not initialized!");
     auto& ctx = registry.ctx().get<OpenGLContext>();
     
-    if (!image_data.IsImageModelValid()) return TEXTURE_NULL;
+    if (!image_data.IsValid()) return BACKEND_TEXTURE_NULL;
 
     GLTexture tex;
     tex.width = image_data.width;
     tex.height = image_data.height;
 
-    // Map formats 
-    GLenum gl_internal_format = GL_RGB8;
-    tex.upload_format = GL_RGB;
-    tex.upload_type = GL_UNSIGNED_BYTE;
-    if (image_data.channels == rrl::asset::ImageChannelLayout::CH_4) {
-        gl_internal_format = (image_data.data_type == rrl::asset::ImageAssetType::FLOAT32) ? GL_RGBA32F : GL_RGBA8;
-        tex.upload_format = (image_data.color_layout == rrl::asset::ImageColorLayout::BGRA) ? GL_BGRA : GL_RGBA;
-    } else if (image_data.channels == rrl::asset::ImageChannelLayout::CH_1) {
-        gl_internal_format = (image_data.data_type == rrl::asset::ImageAssetType::FLOAT32) ? GL_R32F : GL_R8;
-        tex.upload_format = GL_RED;
-    }
-    if (image_data.color_layout == rrl::asset::ImageColorLayout::BGR) tex.upload_format = GL_BGR;
-    if (image_data.data_type == rrl::asset::ImageAssetType::FLOAT32) tex.upload_type = GL_FLOAT;
+    // Resolve all three format requirements safely
+    GLenum gl_internal_format = MapGLInternalFormat(image_data.data_type, image_data.channels, false);
+    tex.upload_format         = MapGLUploadFormat(image_data.color_layout, image_data.channels);
+    tex.upload_type           = MapGLUploadType(image_data.data_type);
 
-    // Allocate Immutable VRAM Storage via DSA
     glCreateTextures(GL_TEXTURE_2D, 1, &tex.id);
     glTextureStorage2D(tex.id, 1, gl_internal_format, tex.width, tex.height);
     
-    // Filtering for general 3D assets (can be bypassed for pure pixel-perfect UI later)
     GLint gl_filter = (image_data.filter == rrl::asset::ImageFilter::NEAREST) ? GL_NEAREST : GL_LINEAR;
     glTextureParameteri(tex.id, GL_TEXTURE_MIN_FILTER, gl_filter);
     glTextureParameteri(tex.id, GL_TEXTURE_MAG_FILTER, gl_filter);
     glTextureParameteri(tex.id, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTextureParameteri(tex.id, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-    // Save state and upload data
     TextureHandle handle = ctx.next_tex_handle++;
     ctx.textures[handle] = tex;
     UpdateTexture(registry, handle, image_data);
@@ -554,7 +666,7 @@ static MeshHandle CreateMesh(entt::registry& registry, const rrl::asset::MeshAss
     RRL_ASSERT(registry.ctx().contains<OpenGLContext>(), "[OpenGL RHI] Backend not initialized!");
     auto& ctx = registry.ctx().get<OpenGLContext>();
     
-    if (mesh_data.positions.empty()) return MESH_NULL;
+    if (mesh_data.positions.empty()) return BACKEND_MESH_NULL;
 
     GLMesh gl_mesh;
     gl_mesh.topology        = MapTopology(mesh_data.topology);
@@ -757,7 +869,7 @@ static void Present(entt::registry& registry) {
         if (!win_name) return;
 
         // Fetch data from GPU
-        rrl::asset::ImageAsset raw_img = GetTargetImage(registry, TARGET_MAIN);
+        rrl::asset::ImageAsset raw_img = GetTargetImage(registry, BACKEND_TARGET_MAIN);
         if (raw_img.data.empty()) return;
 
         // Wrap the raw buffer
@@ -807,7 +919,7 @@ static void Present(entt::registry& registry) {
         if (!gl_window) return;
 
         // Fetch our rendered offscreen canvas
-        auto it = ctx.render_targets.find(TARGET_MAIN);
+        auto it = ctx.render_targets.find(BACKEND_TARGET_MAIN);
         if (it != ctx.render_targets.end()) {
             const GLRenderTarget& main_rt = it->second;
 
@@ -855,6 +967,7 @@ RHIBackend CreateOpenGLBackend() {
     backend.RenderFrame         = RenderFrame;
 
     // Target FBOs
+    backend.CreateRenderTexture = CreateRenderTexture;
     backend.CreateRenderTarget  = CreateRenderTarget;
     backend.DestroyRenderTarget = DestroyRenderTarget;
 
@@ -881,8 +994,6 @@ RHIBackend CreateOpenGLBackend() {
     
 
     // ----- Placeholders
-
-
     // Debugging
     backend.SetDebugFlag        = [](entt::registry& registry, RHIDebugFlag flag, bool enable) {  };
     backend.GetActiveDebugFlags = [](entt::registry& registry) { return RHIDebugFlag::FLAG_NONE; };

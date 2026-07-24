@@ -39,6 +39,15 @@ namespace rrl::rhi::software {
 
 
 /**
+ * @brief Represents a physical FBO mapping to underlying TextureHandles
+ */
+struct SWRenderTarget {
+    uint32_t width, height;
+    std::vector<TextureHandle> colors;
+    TextureHandle depth { rhi::BACKEND_TEXTURE_NULL };
+};
+
+/**
  * @brief Holds the running Software rendering backend context.
  */
 struct SoftwareContext {
@@ -47,10 +56,7 @@ struct SoftwareContext {
     const RHIWindow* active_window { nullptr };
     
     // Core Engine Data Buffers 
-    std::unordered_map<RenderTargetHandle, rrl::asset::ImageAsset> render_targets;
-    std::unordered_map<RenderTargetHandle, rrl::asset::ImageAsset> depth_buffers;
-    std::unordered_map<RenderTargetHandle, software::ColorFormatCache> rt_formats;
-
+    std::unordered_map<RenderTargetHandle, SWRenderTarget> render_targets;
     std::unordered_map<TextureHandle, rrl::asset::ImageAsset> textures;
     std::unordered_map<TextureHandle, software::ColorFormatCache> tex_formats;
 
@@ -89,7 +95,11 @@ static bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t
     ctx.render_height = render_height;
     ctx.active_window = window;
 
-    // Create TARGET_MAIN
+    // Allocate physical texture handles for TARGET_MAIN
+    TextureHandle main_color = ctx.next_tex_handle++;
+    TextureHandle main_depth = ctx.next_tex_handle++;
+
+    // Create TARGET_MAIN Color Texture
     rrl::asset::ImageAsset rt;
     rt.width = render_width; 
     rt.height = render_height; 
@@ -97,11 +107,11 @@ static bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t
     rt.channels = rrl::asset::ImageChannelLayout::CH_3;
     rt.color_layout = rrl::asset::ImageColorLayout::BGR;
     rt.data.resize(render_width * render_height * 3, 30);
-    ctx.render_targets[TARGET_MAIN] = std::move(rt);
-    ctx.rt_formats[TARGET_MAIN]     = software::GetColorFormatCache(rt.color_layout, rt.channels);
-    RRL_ASSERT(rt.IsImageModelValid(), "[Software RHI] Error creating TARGET_MAIN image");
+    ctx.textures[main_color] = std::move(rt);
+    ctx.tex_formats[main_color] = software::GetColorFormatCache(ctx.textures[main_color].color_layout, ctx.textures[main_color].channels);
+    RRL_ASSERT(rt.IsValid(), "[Software RHI] Error creating TARGET_MAIN image");
     
-    // Create Depth buffer
+    // Create TARGET_MAIN Depth Texture
     rrl::asset::ImageAsset depth;
     depth.width = render_width; 
     depth.height = render_height;
@@ -109,8 +119,11 @@ static bool Initialize(entt::registry& registry, uint32_t render_width, uint32_t
     depth.channels = rrl::asset::ImageChannelLayout::CH_1; 
     depth.color_layout = rrl::asset::ImageColorLayout::NONE; 
     depth.data.resize(render_width * render_height * sizeof(float));
-    ctx.depth_buffers[TARGET_MAIN] = std::move(depth);
-    RRL_ASSERT(depth.IsImageModelValid(), "[Software RHI] Error creating TARGET_MAIN depth buffer");
+    ctx.textures[main_depth] = std::move(depth);
+    RRL_ASSERT(depth.IsValid(), "[Software RHI] Error creating TARGET_MAIN depth buffer");
+
+    // Create TARGET_MAIN FBO
+    ctx.render_targets[BACKEND_TARGET_MAIN] = { render_width, render_height, {main_color}, main_depth };
 
     LOG_WARN("[Software RHI] Initialized successfully. Using SIMD AoSoA for accelerated graphics.");
     return true;
@@ -139,13 +152,17 @@ static void RenderFrame(entt::registry& registry) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
 
-    // Fast-clear all active targets in RAM
+    // Clear all active targets in RAM
     for (auto& [handle, target] : ctx.render_targets) {
-        std::fill(target.data.begin(), target.data.end(), 30);
-        
-        auto& depth = ctx.depth_buffers[handle];
-        float* d_ptr = reinterpret_cast<float*>(depth.data.data());
-        std::fill(d_ptr, d_ptr + (depth.width * depth.height), std::numeric_limits<float>::max());
+        for (TextureHandle c_handle : target.colors) {
+            auto& c_img = ctx.textures[c_handle];
+            std::fill(c_img.data.begin(), c_img.data.end(), 30);
+        }
+        if (target.depth != rhi::BACKEND_TEXTURE_NULL) {
+            auto& d_img = ctx.textures[target.depth];
+            float* d_ptr = reinterpret_cast<float*>(d_img.data.data());
+            std::fill(d_ptr, d_ptr + (d_img.width * d_img.height), std::numeric_limits<float>::max());
+        }
     }
 
     // Resolve Debug Flags
@@ -156,19 +173,22 @@ static void RenderFrame(entt::registry& registry) {
 
     // 3D Rendering (loop for each camera and for each mesh (sub mesh material rendering))
     auto mesh_view = registry.view<tf::TFWorldTransformComponent, rrl::asset::MeshLinkage>();
-    auto cam_view = registry.view<camera::CameraComponent, camera::CameraRuntimeComponent>();
+    auto cam_view = registry.view<camera::CameraComponent, camera::CameraRuntimeComponent, camera::CameraOutputComponent>();
     cam_view.use<camera::CameraComponent>(); // Use CameraComponent as iteration drive to used the sorted view.
     for (auto cam_entity : cam_view) {
         const auto& cam = cam_view.get<camera::CameraComponent>(cam_entity);
         const auto& cam_rt = cam_view.get<camera::CameraRuntimeComponent>(cam_entity);
+        const auto& cam_out = cam_view.get<camera::CameraOutputComponent>(cam_entity);
 
-        auto target_it = ctx.render_targets.find(cam.target_fbo);
+        auto target_it = ctx.render_targets.find(cam_out.target_fbo);
         if (target_it == ctx.render_targets.end()) continue;
         
-        rrl::asset::ImageAsset& render_target = target_it->second;
-        rrl::asset::ImageAsset& depth_buffer = ctx.depth_buffers[cam.target_fbo];
-        const auto& rt_format = ctx.rt_formats[cam.target_fbo];
-
+        // Grab render target textures
+        SWRenderTarget& physical_rt = target_it->second;
+        rrl::asset::ImageAsset& render_target = ctx.textures[physical_rt.colors[0]];
+        rrl::asset::ImageAsset& depth_buffer  = ctx.textures[physical_rt.depth];
+        const auto& rt_format                 = ctx.tex_formats[physical_rt.colors[0]];
+        
         float half_w = static_cast<float>(render_target.width) * 0.5f;
         float half_h = static_cast<float>(render_target.height) * 0.5f;
 
@@ -178,7 +198,7 @@ static void RenderFrame(entt::registry& registry) {
             
             if (!registry.valid(linkage.mesh_asset)) continue;
             if (!registry.all_of<rrl::asset::MeshRuntimeComponent>(linkage.mesh_asset)) continue;
-            if ((cam.culling_mask & linkage.layer_mask) == rhi::RHIRenderLayer::LAYER_NONE) continue;
+            if ((cam.culling_mask & linkage.layer_mask) == rhi::RHIRenderLayerMask::LAYER_NONE) continue;
 
             MeshHandle mesh_handle = registry.get<rrl::asset::MeshRuntimeComponent>(linkage.mesh_asset).handle;
             if (ctx.meshes.find(mesh_handle) == ctx.meshes.end()) continue;
@@ -243,7 +263,7 @@ static void RenderFrame(entt::registry& registry) {
                         }
 
                         // Material textures
-                        if (mat_runtime.albedo_handle != rhi::TEXTURE_NULL) {
+                        if (mat_runtime.albedo_handle != rhi::BACKEND_TEXTURE_NULL) {
                             if (ctx.textures.find(mat_runtime.albedo_handle) != ctx.textures.end()) {
                                 active_albedo = &ctx.textures[mat_runtime.albedo_handle];
                                 tex_format = ctx.tex_formats[mat_runtime.albedo_handle];
@@ -254,7 +274,7 @@ static void RenderFrame(entt::registry& registry) {
                         render_target, depth_buffer, mesh, ctx.working_vertex_buffer,
                         submesh.index_offset, submesh.index_count, 
                         mat_base_color, active_albedo, 
-                        ctx.rt_formats[cam.target_fbo], tex_format,
+                        rt_format, tex_format,
                         disable_textures, show_uvs, runtime_affine_override, draw_wireframes
                     );
                 }
@@ -265,73 +285,92 @@ static void RenderFrame(entt::registry& registry) {
 
     // 2D Rendering (UI Layer)
     auto ui_view = registry.view<rrl::asset::TextureLinkage>();
-    rrl::asset::ImageAsset& main_target = ctx.render_targets[TARGET_MAIN];
-    const auto& main_fmt = ctx.rt_formats[TARGET_MAIN];
-    for (auto ui_entity : ui_view) {
-        const auto& linkage = ui_view.get<rrl::asset::TextureLinkage>(ui_entity);
+    auto main_rt_it = ctx.render_targets.find(rhi::BACKEND_TARGET_MAIN);
+    if (main_rt_it != ctx.render_targets.end() && !main_rt_it->second.colors.empty()) {
+        rrl::asset::ImageAsset& main_target = ctx.textures[main_rt_it->second.colors[0]];
+        const auto& main_fmt = ctx.tex_formats[main_rt_it->second.colors[0]];
         
-        if (!registry.valid(linkage.texture_asset)) continue;
-        if (!registry.all_of<rrl::asset::TextureRuntimeComponent>(linkage.texture_asset)) continue;
-        if ((linkage.layer_mask & rhi::RHIRenderLayer::LAYER_UI) == rhi::RHIRenderLayer::LAYER_NONE) continue;
-        
-        rhi::TextureHandle tex_handle = registry.get<rrl::asset::TextureRuntimeComponent>(linkage.texture_asset).handle;
-        if (ctx.textures.find(tex_handle) == ctx.textures.end()) continue;
+        for (auto ui_entity : ui_view) {
+            const auto& linkage = ui_view.get<rrl::asset::TextureLinkage>(ui_entity);
+            
+            if (!registry.valid(linkage.texture_asset)) continue;
+            if (!registry.all_of<rrl::asset::TextureRuntimeComponent>(linkage.texture_asset)) continue;
+            if ((linkage.layer_mask & rhi::RHIRenderLayerMask::LAYER_UI) == rhi::RHIRenderLayerMask::LAYER_NONE) continue;
+            
+            rhi::TextureHandle tex_handle = registry.get<rrl::asset::TextureRuntimeComponent>(linkage.texture_asset).handle;
+            if (ctx.textures.find(tex_handle) == ctx.textures.end()) continue;
 
-        const rrl::asset::ImageAsset& source_tex = ctx.textures[tex_handle];
-        const auto& src_fmt = ctx.tex_formats[tex_handle];
-        
-        int px = static_cast<int>(linkage.screen_x * main_target.width);
-        int py = static_cast<int>(linkage.screen_y * main_target.height);
-        int pw = static_cast<int>(linkage.screen_w * main_target.width);
-        int ph = static_cast<int>(linkage.screen_h * main_target.height);
-        
-        // Utilize the new primitive drawing API for 2D UI Blitting
-        software::SWRDrawTexture2D(
-            main_target, source_tex, 
-            px, py, pw, ph, 
-            main_fmt, src_fmt
-        );
+            const rrl::asset::ImageAsset& source_tex = ctx.textures[tex_handle];
+            const auto& src_fmt = ctx.tex_formats[tex_handle];
+            
+            int px = static_cast<int>(linkage.screen_x * main_target.width);
+            int py = static_cast<int>(linkage.screen_y * main_target.height);
+            int pw = static_cast<int>(linkage.screen_w * main_target.width);
+            int ph = static_cast<int>(linkage.screen_h * main_target.height);
+            
+            software::SWRDrawTexture2D(
+                main_target, source_tex, 
+                px, py, pw, ph, 
+                main_fmt, src_fmt
+            );
+        }
     }
 }
 
 
 
 // --- Render Targets (FBOs) ---------------------------------------
-static RenderTargetHandle CreateTarget(entt::registry& registry, uint32_t width, uint32_t height) {
+static TextureHandle CreateRenderTexture(entt::registry& registry, uint32_t width, uint32_t height, 
+                                         rrl::asset::ImageAssetType data_type,
+                                         rrl::asset::ImageChannelLayout channels, 
+                                         bool is_depth, uint32_t array_layers) {
+    RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
+    auto& ctx = registry.ctx().get<SoftwareContext>();
+    TextureHandle handle = ctx.next_tex_handle++;
+    
+    rrl::asset::ImageAsset img;
+    img.width = width;
+    img.height = height;
+    img.data_type = data_type;
+    img.channels = channels;
+    
+    if (is_depth) {
+        img.color_layout = rrl::asset::ImageColorLayout::NONE;
+        size_t bytes = 4; // float32 size
+        img.data.resize(width * height * bytes, 0);
+    } else {
+        img.color_layout = rrl::asset::ImageColorLayout::RGB; // Assuming basic format compatibility
+        size_t bytes = 1;
+        if (channels == rrl::asset::ImageChannelLayout::CH_3) bytes = 3;
+        else if (channels == rrl::asset::ImageChannelLayout::CH_4) bytes = 4;
+        img.data.resize(width * height * bytes, 0);
+    }
+    
+    ctx.textures[handle] = std::move(img);
+    ctx.tex_formats[handle] = software::GetColorFormatCache(ctx.textures[handle].color_layout, channels);
+    return handle;
+}
+static RenderTargetHandle CreateRenderTarget(entt::registry& registry, const PhysicalRenderTargetDescriptor& desc) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
     
     RenderTargetHandle handle = ctx.next_handle++;
     
-    rrl::asset::ImageAsset rt;
-    rt.width = width; rt.height = height; 
-    rt.data_type = rrl::asset::ImageAssetType::UINT8;
-    rt.channels = rrl::asset::ImageChannelLayout::CH_3;
-    rt.color_layout = rrl::asset::ImageColorLayout::RGB;
-    rt.data.resize(width * height * 3, 0);
-    ctx.render_targets[handle]  = std::move(rt);
-    ctx.rt_formats[handle]      = software::GetColorFormatCache(rt.color_layout, rt.channels);
-    RRL_ASSERT(rt.IsImageModelValid(), "[OpernCV RHI] Error creating the '{}' FBO target image");
+    SWRenderTarget rt;
+    rt.width = desc.width;
+    rt.height = desc.height;
+    rt.colors = desc.color_attachments;
+    rt.depth = desc.depth_stencil_attachment;
     
-    rrl::asset::ImageAsset depth;
-    depth.width = width; depth.height = height; 
-    depth.data_type = rrl::asset::ImageAssetType::FLOAT32;
-    depth.channels = rrl::asset::ImageChannelLayout::CH_1;
-    rt.color_layout = rrl::asset::ImageColorLayout::NONE;
-    depth.data.resize(width * height * sizeof(float));
-    ctx.depth_buffers[handle] = std::move(depth);
-    RRL_ASSERT(depth.IsImageModelValid(), "[OpernCV RHI] Error creating the '{}' FBO target depth buffer");
-
+    ctx.render_targets[handle] = rt;
     return handle;
 }
-static void DestroyTarget(entt::registry& registry, RenderTargetHandle handle) {
-RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
-    if (handle == TARGET_MAIN) return;
+static void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle handle) {
+    RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
+    if (handle == rhi::BACKEND_TARGET_MAIN) return;
     
     auto& ctx = registry.ctx().get<SoftwareContext>();
     ctx.render_targets.erase(handle);
-    ctx.depth_buffers.erase(handle);
-    ctx.rt_formats.erase(handle);
 }
 
 
@@ -339,7 +378,7 @@ RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not init
 // --- Textures ----------------------------------------------------
 static void UpdateTexture(entt::registry& registry, TextureHandle handle, const rrl::asset::ImageAsset& image_data) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
-    RRL_ASSERT(image_data.IsImageModelValid(), "SoftwareBackend received an invalid image model for texture updating!");
+    RRL_ASSERT(image_data.IsValid(), "SoftwareBackend received an invalid image model for texture updating!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
     if (ctx.textures.find(handle) == ctx.textures.end() || image_data.data.empty()) return;
 
@@ -348,7 +387,7 @@ static void UpdateTexture(entt::registry& registry, TextureHandle handle, const 
 }
 static TextureHandle CreateTexture(entt::registry& registry, const rrl::asset::ImageAsset& image_data) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
-    RRL_ASSERT(image_data.IsImageModelValid(), "OpenCVRenderer received an invalid image model for texture creation!");
+    RRL_ASSERT(image_data.IsValid(), "OpenCVRenderer received an invalid image model for texture creation!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
 
     TextureHandle handle = ctx.next_tex_handle++;
@@ -417,9 +456,11 @@ static rrl::asset::ImageAsset GetTargetImage(entt::registry& registry, RenderTar
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
     auto& ctx = registry.ctx().get<SoftwareContext>();
 
-    // Return a copy of the raw ImageAsset 
+    // Return a copy of the mapped Color ImageAsset 
     if (ctx.render_targets.find(handle) == ctx.render_targets.end()) return rrl::asset::ImageAsset{};
-    return ctx.render_targets[handle];
+    const SWRenderTarget& rt = ctx.render_targets[handle];
+    if (rt.colors.empty()) return rrl::asset::ImageAsset{};
+    return ctx.textures[rt.colors[0]];
 }
 static void Present(entt::registry& registry) {
     RRL_ASSERT(registry.ctx().contains<SoftwareContext>(), "SoftwareBackend not initialized!");
@@ -432,7 +473,9 @@ static void Present(entt::registry& registry) {
     if (window->type == RHIWindowType::OPENCV) {
         #ifdef RRL_BUILD_WINDOW_OPENCV 
         const char* win_name = static_cast<const char*>(window->native_handle);
-        rrl::asset::ImageAsset& main_fbo = ctx.render_targets[TARGET_MAIN];
+        rrl::asset::ImageAsset main_fbo = GetTargetImage(registry, rhi::BACKEND_TARGET_MAIN);
+        if (main_fbo.data.empty()) return;
+
         cv::Mat fbo_mat(main_fbo.height, main_fbo.width, CV_8UC3, main_fbo.data.data());
         
         // Scale to the Window Size if it differs from the rendering resolution
@@ -470,7 +513,7 @@ static void Present(entt::registry& registry) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
         // Fetch data
-        rrl::asset::ImageAsset main_fbo = GetTargetImage(registry, TARGET_MAIN);
+        rrl::asset::ImageAsset main_fbo = GetTargetImage(registry, BACKEND_TARGET_MAIN);
         if (main_fbo.data.empty()) return;
 
         // OpenGL Format Mapping
@@ -573,8 +616,9 @@ RHIBackend CreateSoftwareBackend() {
     backend.RenderFrame         = RenderFrame;
 
     // Target FBOs
-    backend.CreateRenderTarget  = CreateTarget;
-    backend.DestroyRenderTarget = DestroyTarget;
+    backend.CreateRenderTexture = CreateRenderTexture;
+    backend.CreateRenderTarget  = CreateRenderTarget;
+    backend.DestroyRenderTarget = DestroyRenderTarget;
 
     // Textures
     backend.CreateTexture       = CreateTexture;

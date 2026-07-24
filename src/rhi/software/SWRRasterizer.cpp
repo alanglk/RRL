@@ -532,13 +532,13 @@ void SWRRender3DMesh(
 ) {
     if (mesh.indices.empty()) return;
     
-    RRL_ASSERT(render_target.IsImageModelValid(), "[SWRRender3DMesh] Received a non valid render_target model");
+    RRL_ASSERT(render_target.IsValid(), "[SWRRender3DMesh] Received a non valid render_target");
     RRL_ASSERT( (   render_target.color_layout != rrl::asset::ImageColorLayout::NONE && 
                     render_target.color_layout != rrl::asset::ImageColorLayout::GRAY && 
                     render_target.color_layout != rrl::asset::ImageColorLayout::HSV      ), 
         "[SWRRender3DMesh] Received a render_target with non supported color space layout");
     RRL_ASSERT(render_target.data_type == rrl::asset::ImageAssetType::UINT8, "[SWRRender3DMesh] Received a render_target with data type not equal to UINT8");
-    RRL_ASSERT(depth_buffer.IsImageModelValid(), "[SWRRender3DMesh] Received a non valid depth_buffer model");
+    RRL_ASSERT(depth_buffer.IsValid(), "[SWRRender3DMesh] Received a non valid depth_buffer");
     RRL_ASSERT(depth_buffer.color_layout == rrl::asset::ImageColorLayout::NONE, "[SWRRender3DMesh] Received a depth_buffer with non supported color space layout");
     RRL_ASSERT(depth_buffer.data_type == rrl::asset::ImageAssetType::FLOAT32, "[SWRRender3DMesh] Received a depth_buffer with data type not equal to FLOAT32");
 

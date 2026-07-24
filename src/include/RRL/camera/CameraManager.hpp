@@ -28,8 +28,8 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target);
  */
 entt::entity SpawnCamera(entt::registry& registry, 
     const CameraModelVariant& model = PerspectiveModel{}, 
-    rhi::RenderTargetHandle target_fbo = rhi::TARGET_MAIN,
-    rhi::RHIRenderLayer layer = rhi::RHIRenderLayer::LAYER_ALL
+    rhi::ResourceID target_fbo = rhi::TARGET_MAIN,
+    rhi::RHIRenderLayerMask layer = rhi::RHIRenderLayerMask::LAYER_ALL
 );
 /**
  * @brief Removes the camera from the registry. This completely destroys the camera entity.
@@ -51,11 +51,11 @@ void SetCameraModel(entt::registry& registry, entt::entity cam_entity, const Cam
  * @brief Sets the rendering fbo target for the given entity camera. 
  * If the target_fbo points to the same target as other camera, the other camera will point to TARGET_NULL.
  */
-void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::RenderTargetHandle target_fbo);
+void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::ResourceID target_fbo);
 /**
  * @brief Sets the rendering culling mask of the camera
  */
-void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RHIRenderLayer layer);
+void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RHIRenderLayerMask layer);
 /**
  * @brief Set the camera rendering priority.
  */

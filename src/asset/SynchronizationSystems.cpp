@@ -9,6 +9,7 @@
 #include "RRL/asset/MaterialComponents.hpp"
 
 #include "RRL/rhi/RHI.hpp"
+#include "RRL/rhi/RHIBackend.hpp"
 
 #include <cstdint>
 
@@ -30,8 +31,9 @@ void SyncTexturesToRHI(entt::registry& registry) {
         if ( runtime.cached_tex_version != current_version && source.image ) {
 
             // Create a new texture
-            if (runtime.handle == rhi::TEXTURE_NULL) {
-                runtime.handle = rhi::CreateTexture(registry, *source.image);
+            if (runtime.handle == rhi::BACKEND_TEXTURE_NULL) {
+                rhi::ResourceID virtual_id{static_cast<uint32_t>(entity)};
+                runtime.handle = rhi::CreateTexture(registry, virtual_id, *source.image);
             }
             // Update the existing texture
             else {
@@ -57,8 +59,9 @@ void SyncMeshesToRHI(entt::registry& registry) {
         if ( runtime.cached_mesh_version != current_version && source.mesh ) {
 
             // Create a new mesh
-            if (runtime.handle == rhi::MESH_NULL) {
-                runtime.handle = rhi::CreateMesh(registry, *source.mesh);
+            if (runtime.handle == rhi::BACKEND_MESH_NULL) {
+                rhi::ResourceID virtual_id{static_cast<uint32_t>(entity)};
+                runtime.handle = rhi::CreateMesh(registry, virtual_id, *source.mesh);
             }
             // Update the existing mesh
             else {
@@ -84,9 +87,13 @@ void SyncMaterialsToRHI(entt::registry& registry) {
         // If the material properties or assigned textures changed
         if (runtime.cached_mat_version != current_version) {
             
-            if (runtime.handle == rhi::MATERIAL_NULL) {
-                runtime.handle = rhi::CreateMaterial(registry, source.data);
-            } else {
+            // Create a new material
+            if (runtime.handle == rhi::BACKEND_MATERIAL_NULL) {
+                rhi::ResourceID virtual_id{static_cast<uint32_t>(entity)};
+                runtime.handle = rhi::CreateMaterial(registry, virtual_id, source.data);
+            } 
+            // Update the existing material (O(1) Physical Fast-Path)
+            else {
                 rhi::UpdateMaterial(registry, runtime.handle, source.data);
             }
             
@@ -94,28 +101,28 @@ void SyncMaterialsToRHI(entt::registry& registry) {
             if (registry.valid( ToEntt(source.data.albedo_map) ) && registry.all_of<TextureRuntimeComponent>( ToEntt(source.data.albedo_map) )) {
                 runtime.albedo_handle = registry.get<TextureRuntimeComponent>( ToEntt(source.data.albedo_map) ).handle;
             } else {
-                runtime.albedo_handle = rhi::TEXTURE_NULL;
+                runtime.albedo_handle = rhi::BACKEND_TEXTURE_NULL;
             }
 
             // Resolve Normal Map
             if (registry.valid( ToEntt(source.data.normal_map) ) && registry.all_of<TextureRuntimeComponent>( ToEntt(source.data.normal_map) )) {
                 runtime.normal_handle = registry.get<TextureRuntimeComponent>( ToEntt(source.data.normal_map) ).handle;
             } else {
-                runtime.normal_handle = rhi::TEXTURE_NULL;
+                runtime.normal_handle = rhi::BACKEND_TEXTURE_NULL;
             }
 
             // Resolve Metallic/Roughness Map
             if (registry.valid( ToEntt(source.data.metallic_roughness_map) ) && registry.all_of<TextureRuntimeComponent>( ToEntt(source.data.metallic_roughness_map) )) {
                 runtime.metallic_roughness_handle = registry.get<TextureRuntimeComponent>( ToEntt(source.data.metallic_roughness_map) ).handle;
             } else {
-                runtime.metallic_roughness_handle = rhi::TEXTURE_NULL;
+                runtime.metallic_roughness_handle = rhi::BACKEND_TEXTURE_NULL;
             }
 
             // Resolve Emmisive Map
             if (registry.valid( ToEntt(source.data.emissive_map) ) && registry.all_of<TextureRuntimeComponent>( ToEntt(source.data.emissive_map) )) {
                 runtime.metallic_roughness_handle = registry.get<TextureRuntimeComponent>( ToEntt(source.data.emissive_map) ).handle;
             } else {
-                runtime.metallic_roughness_handle = rhi::TEXTURE_NULL;
+                runtime.metallic_roughness_handle = rhi::BACKEND_TEXTURE_NULL;
             }
 
             runtime.cached_mat_version = current_version;

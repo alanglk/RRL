@@ -1,5 +1,6 @@
 // RRL/tests/camera_module_tests.cpp
 
+#include "RRL/rhi/RHITypes.hpp"
 #include <gtest/gtest.h>
 #include <memory>
 
@@ -58,7 +59,7 @@ protected:
 TEST_F(CameraModuleTest, PrimaryCameraManagement) {
     // New API automatically creates entities and registers components
     rrl::ObjectID cam1 = engine->camera.SpawnCamera(rrl::camera::PerspectiveModel{}, rrl::rhi::TARGET_MAIN);
-    rrl::ObjectID cam2 = engine->camera.SpawnCamera(rrl::camera::PerspectiveModel{}, rrl::rhi::TARGET_NULL);
+    rrl::ObjectID cam2 = engine->camera.SpawnCamera(rrl::camera::PerspectiveModel{}, rrl::rhi::RESOURCE_NULL);
 
     EXPECT_EQ(engine->camera.GetPrimaryCamera(), cam1);
 

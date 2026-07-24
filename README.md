@@ -66,13 +66,4 @@ Implement a [Render Graph](https://logins.github.io/graphics/2021/05/31/RenderGr
 
 
 Step 1. Upgrade the RRL base source code:
-- Implement Multiple Render Targets (MRT): RHIBackend should receive a RenderTargetDescriptor on CreateRenderTarget. Instead of hardcoding texture allocations inside the FBO creation, the descriptor will take a list of already-allocated TextureHandles (colors and depth).
-> Note on TARGET_MAIN: This remains a special reserved handle (0). The RDG will treat it as a "Retained Resource" (the window) that cannot be created or destroyed.
-
-- Decouple Cameras from Targets: Currently, CameraComponent owns a target_fbo. This will be phased out. Cameras should only define what they see (culling_mask) and how they see it (Projection). The RDG Passes will define where the image goes.
-
-- Enable GPU-Only Transient Allocations: To enable frame-to-frame rendering, intermediate textures, and Multiple Render Targets (MRT), we must bypass the CPU AssetManager. We will add a CreateRenderTexture(width, height, format, ...) function directly to the RHIBackend. This allocates pure, empty VRAM and returns a TextureHandle for the RDG to use.
-
-- Support Texture Arrays for Stitching: Update the new CreateRenderTexture to accept an array_layers parameter. This allows the backend to allocate a GL_TEXTURE_2D_ARRAY, enabling multiple cameras to render to different slices of the same FBO simultaneously.
-
-- Complete the SceneEnvironment setup: Finalize the SceneEnvironment structures and implement the public SceneModule facade methods so users can configure the skybox/background. This data will be stored in the SceneCache for the RDG's "Background Pass" to consume.
+- These updates are killing RRL performance. We need to debug.

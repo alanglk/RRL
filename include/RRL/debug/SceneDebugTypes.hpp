@@ -4,9 +4,11 @@
 #include <RRL/rrl_export.h>
 
 #include "RRL/RRLTypes.hpp"
-#include "RRL/scene/SceneTypes.hpp"
+#include "RRL/asset/AssetTypes.hpp"
+
 #include <unordered_map>
 #include <vector>
+#include <string>
 
 
 namespace rrl::debug {
@@ -23,7 +25,7 @@ struct RRL_API BlueprintNodeStats {
     std::vector<BlueprintNodeStats> children;
 };
 struct RRL_API BlueprintDebugStats {
-    rrl::scene::PrefabID blueprint_id;
+    rrl::asset::PrefabID blueprint_id;
     std::vector<BlueprintNodeStats> root_nodes;
 
     // How many live instances are using this blueprint?
@@ -36,7 +38,7 @@ struct RRL_API BlueprintDebugStats {
 // --- Debug Structs -----------------------------------------------
 struct RRL_API SceneDebugReport {
     // Blueprints safely loaded in RAM
-    std::unordered_map<rrl::scene::PrefabID, BlueprintDebugStats> tracked_blueprints;
+    std::unordered_map<rrl::asset::PrefabID, BlueprintDebugStats> tracked_blueprints;
     
     // Entities in the world that have a PrefabInstanceComponent, but the Blueprint no longer exists in the cache
     std::vector<AssetID> leaked_instances; 

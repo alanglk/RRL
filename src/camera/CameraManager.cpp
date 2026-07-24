@@ -3,6 +3,10 @@
 #include "RRL/camera/CameraManager.hpp"
 #include "RRL/camera/CameraComponents.hpp"
 
+#include "RRL/rhi/RHIBackend.hpp"
+#include "RRL/rhi/RHITypes.hpp"
+#include "RRL/rhi/RHIBackendManager.hpp"
+
 #include "RRL/scene/SceneManager.hpp"
 #include "RRL/tf/TFComponents.hpp"
 #include "RRL/tf/TransformTree.hpp"
@@ -36,6 +40,16 @@ static glm::quat CalculateLookAtRotation(const glm::vec3& eye, const glm::vec3& 
     glm::vec3 true_up = glm::cross(forward, left);
     
     return glm::quat_cast(glm::mat3(forward, left, true_up));
+}
+static rhi::RenderTargetHandle GetRenderTargetHandle(rhi::ResourceID id) {
+    if (id == rhi::TARGET_MAIN) return rhi::BACKEND_TARGET_MAIN;
+    if (id == rhi::RESOURCE_NULL) return rhi::BACKEND_TARGET_NULL;
+    
+    auto& backend = rhi::RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.type != rhi::RHIBackendType::NONE, "RHI Backend not loaded!");
+    RRL_ASSERT(backend.Initialize != nullptr, "RHI Backend not loaded!");
+    
+    return backend.cache.GetPhysicalTarget(id);
 }
 
 // --- Lifecycle ---------------------------------------------------
@@ -73,7 +87,7 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
         spatial_changed = spatial_changed || (runtime.cached_tf_version != world_tf.version);
         intrinsic_changed = intrinsic_changed || (runtime.cached_ndc_target != ndc_target);
 
-        // Skip entitym_ctx->
+        // Skip entity if nothing changed
         if (!spatial_changed && !intrinsic_changed) {
             continue; 
         }
@@ -158,20 +172,22 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
     }
 
 }
-entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& model, rhi::RenderTargetHandle target_fbo, rhi::RHIRenderLayer layer) {
+entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& model, rhi::ResourceID target_fbo, rhi::RHIRenderLayerMask layer) {
     RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     auto& cache = registry.ctx().get<CameraCache>();
-
+    
     // Ensure no other camera points to the same target_fbo (ignoring TARGET_NULL)
-    auto view = registry.view<CameraComponent>();
-    for (auto e : view) {
-        auto& cam = view.get<CameraComponent>(e);
-        if (cam.target_fbo == rhi::TARGET_NULL) continue;
-        
-        // Null other camera FBO (it stops rendering)
-        if (cam.target_fbo == target_fbo) {
-            cam.target_fbo = rhi::TARGET_NULL;  
+    auto physical_fbo = GetRenderTargetHandle(target_fbo);
+    if (physical_fbo != rhi::BACKEND_TARGET_NULL) {
+        auto view = registry.view<CameraOutputComponent>();
+        for (auto e : view) {
+            auto& output = view.get<CameraOutputComponent>(e);
+            if (output.target_fbo == physical_fbo) {
+                output.target_fbo = rhi::BACKEND_TARGET_NULL;  
+            }
         }
+    } else {
+        LOG_ERROR("SpawnCamera failed: Provided ResourceID ({}) is not a valid Render Target. Defaulting to BACKEND_TARGET_NULL.", target_fbo.id);
     }
     
     // Add default root transform
@@ -180,8 +196,10 @@ entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& mod
     
     // intrinsic_dirty is true by default in the struct.
     uint32_t render_priority = cache.next_priority++;
-    auto& cam = registry.emplace<CameraComponent>(entity, model, true, target_fbo, layer, render_priority);
+    registry.emplace<CameraComponent>(entity, model, true, layer, render_priority);
+    registry.emplace<CameraOutputComponent>(entity, physical_fbo);
     cache.priority_dirty = true;
+    
     return entity;
 }
 void DestroyCamera(entt::registry& registry, entt::entity cam_entity) {
@@ -213,22 +231,32 @@ void SetPrimaryCamera(entt::registry& registry, entt::entity cam_entity) {
     RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     SetCameraTarget(registry, cam_entity, rhi::TARGET_MAIN);
 }
-void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::RenderTargetHandle target_fbo) {
+void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::ResourceID target_fbo) {
     RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraTarget failed: Entity lacks a CameraComponent!");
-    
-    // Ensure no other camera points to the same target_fbo (ignoring TARGET_NULL)
-    auto view = registry.view<CameraComponent>();
-    for (auto e : view) {
-        auto& cam = view.get<CameraComponent>(e);
-        if (e == cam_entity) {
-            cam.target_fbo = target_fbo;        // Set the target entity to draw to the screen
-        } else if (cam.target_fbo == target_fbo) {
-            cam.target_fbo = rhi::TARGET_NULL;  // If any other camera was drawing to the same target, strip its target
+    auto physical_fbo = GetRenderTargetHandle(target_fbo);
+
+    if (physical_fbo != rhi::BACKEND_TARGET_NULL) {
+        // Ensure no other camera points to the same target_fbo
+        auto view = registry.view<CameraOutputComponent>();
+        for (auto e : view) {
+            if (e != cam_entity && view.get<CameraOutputComponent>(e).target_fbo == physical_fbo) {
+                view.get<CameraOutputComponent>(e).target_fbo = rhi::BACKEND_TARGET_NULL;
+            }
         }
+    } else {
+        LOG_ERROR("SetCameraTarget failed: Provided ResourceID ({}) is not a valid Render Target.", target_fbo.id);
+        return;
+    }
+
+    // Assign the new target via the temporal component
+    if (registry.all_of<CameraOutputComponent>(cam_entity)) {
+        registry.get<CameraOutputComponent>(cam_entity).target_fbo = physical_fbo;
+    } else {
+        registry.emplace<CameraOutputComponent>(cam_entity, physical_fbo);
     }
 }
-void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RHIRenderLayer layer) {
+void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RHIRenderLayerMask layer) {
     RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
     RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraTarget failed: Entity lacks a CameraComponent!");
     auto& cam = registry.get<CameraComponent>(cam_entity);
@@ -272,27 +300,39 @@ CameraModelVariant GetCameraModel(entt::registry& registry, entt::entity cam_ent
 }
 entt::entity GetPrimaryCamera(entt::registry& registry) {
     RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
-    auto view = registry.view<CameraComponent>();
+    
+    // Query the provisional CameraOutputComponent for the target mapping
+    auto view = registry.view<CameraOutputComponent>();
     for (auto entity : view) {
-        if (view.get<CameraComponent>(entity).target_fbo == rhi::TARGET_MAIN) {
+        if (view.get<CameraOutputComponent>(entity).target_fbo == rhi::BACKEND_TARGET_MAIN) {
             return entity;
         }
     }
     return entt::null;
 }
+static const glm::mat4 CAMERA_FALLBACK_IDENTITY(1.0f);
 const glm::mat4& GetViewMatrix(entt::registry& registry, entt::entity cam_entity) {
     RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
-    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraRuntimeComponent, "GetViewMatrix failed: Entity lacks a CameraRuntimeComponent!");
+    if (!registry.all_of<CameraRuntimeComponent>(cam_entity)) {
+        LOG_WARN("GetViewMatrix called on a camera before UpdateCameras() was executed! Returning identity matrix.");
+        return CAMERA_FALLBACK_IDENTITY;
+    }
     return registry.get<CameraRuntimeComponent>(cam_entity).view_matrix;
 }
 const glm::mat4& GetProjectionMatrix(entt::registry& registry, entt::entity cam_entity) {
     RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
-    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraRuntimeComponent, "GetProjectionMatrix failed: Entity lacks a CameraRuntimeComponent!");
+    if (!registry.all_of<CameraRuntimeComponent>(cam_entity)) {
+        LOG_WARN("GetProjectionMatrix called on a camera before UpdateCameras() was executed! Returning identity matrix.");
+        return CAMERA_FALLBACK_IDENTITY;
+    }
     return registry.get<CameraRuntimeComponent>(cam_entity).projection_matrix;
 }
 const glm::mat4& GetViewProjectionMatrix(entt::registry& registry, entt::entity cam_entity) {
     RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
-    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraRuntimeComponent, "GetViewProjectionMatrix failed: Entity lacks a CameraRuntimeComponent!");
+    if (!registry.all_of<CameraRuntimeComponent>(cam_entity)) {
+        LOG_WARN("GetViewProjectionMatrix called on a camera before UpdateCameras() was executed! Returning identity matrix.");
+        return CAMERA_FALLBACK_IDENTITY;
+    }
     return registry.get<CameraRuntimeComponent>(cam_entity).view_projection_matrix;
 }
 

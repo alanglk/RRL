@@ -76,7 +76,7 @@ void RenderFrame(entt::registry& registry);
 /**
  * @brief Reads rendered data from the RHI back to CPU RAM.
  */
-rrl::asset::ImageAsset GetTargetImage(entt::registry& registry, RenderTargetHandle handle = TARGET_MAIN);
+rrl::asset::ImageAsset GetTargetImage(entt::registry& registry, ResourceID id = TARGET_MAIN);
 /**
  * @brief Asks the backend to swap its TARGET_MAIN buffer to the attached window.
  */
@@ -88,60 +88,94 @@ void Present(entt::registry& registry);
 /**
  * @brief Requests the backend to create an off-screen render target.
  */
-RenderTargetHandle CreateRenderTarget(entt::registry& registry, uint32_t width, uint32_t height);
+void CreateRenderTarget(entt::registry& registry, ResourceID id, const rrl::rhi::RenderTargetDescriptor& desc);
 /**
  * @brief Destroys an off-screen render target and frees its memory.
  * Note: TARGET_MAIN cannot be destroyed through this function.
  */
-void DestroyRenderTarget(entt::registry& registry, RenderTargetHandle handle);
+void DestroyRenderTarget(entt::registry& registry, ResourceID id);
 
 
 
 // --- Textures ----------------------------------------------------
 /**
- * @brief Requests the backend to allocate and create a texture.
+ * @brief Allocates a texture, maps it to the provided Virtual ID, and returns the direct physical handle.
  */
-TextureHandle CreateTexture(entt::registry& registry, const rrl::asset::ImageAsset& image_data);
+TextureHandle CreateTexture(entt::registry& registry, ResourceID id, const rrl::asset::ImageAsset& image_data);
 /**
  * @brief Updates an already allocated texture.
+ * [ Direct Physical API ] fast-path for ECS Sync updates.
  */
 void UpdateTexture(entt::registry& registry, TextureHandle handle, const rrl::asset::ImageAsset& image_data);
 /**
+ * @brief Updates an already allocated texture.
+ * @note [ Virtualized Graph API ] Slower path for RDG / external lookup.
+ */
+void UpdateTexture(entt::registry& registry, ResourceID id, const rrl::asset::ImageAsset& image_data);
+/**
+ * @brief Destroys a texture freeing its memory.
+ * [ Direct Physical API ] fast-path for Asset GB updates.
+ */
+void DestroyTexture(entt::registry& registry, TextureHandle id);
+/**
  * @brief Destroys a texture freeing its memory.
  */
-void DestroyTexture(entt::registry& registry, TextureHandle handle);
+void DestroyTexture(entt::registry& registry, ResourceID id);
 
 
 
 // --- Meshes ------------------------------------------------------
 /**
- * @brief Requests the backend to allocate and create a mesh.
+ * @brief Allocates a mesh, maps it to the provided Virtual ID, and returns the direct physical handle.
  */
-MeshHandle CreateMesh(entt::registry& registry, const rrl::asset::MeshAsset& mesh_data);
+MeshHandle CreateMesh(entt::registry& registry, ResourceID id, const rrl::asset::MeshAsset& mesh_data);
 /**
  * @brief Updates an already allocated mesh.
+ * [ Direct Physical API ] fast-path for ECS Sync updates.
  */
 void UpdateMesh(entt::registry& registry, MeshHandle handle, const rrl::asset::MeshAsset& mesh_data);
 /**
+ * @brief Updates an already allocated mesh.
+ * @note [ Virtualized Graph API ] Slower path for RDG / external lookup.
+ */
+void UpdateMesh(entt::registry& registry, ResourceID id, const rrl::asset::MeshAsset& mesh_data);
+/**
+ * @brief Destroys a mesh freeing its memory.
+ * [ Direct Physical API ] fast-path for Asset GB updates.
+ */
+void DestroyMesh(entt::registry& registry, MeshHandle id);
+/**
  * @brief Destroys a mesh freeing its memory.
  */
-void DestroyMesh(entt::registry& registry, MeshHandle handle);
+void DestroyMesh(entt::registry& registry, ResourceID id);
 
 
 
 // --- Materials ---------------------------------------------------
 /**
- * @brief Requests the backend to allocate and create a new material.
+ * @brief Allocates a material UBO, maps it to the Virtual ID, and returns the direct physical handle.
  */
-MaterialHandle CreateMaterial(entt::registry& registry, const rrl::asset::MaterialAsset& material_data);
+MaterialHandle CreateMaterial(entt::registry& registry, ResourceID id, const rrl::asset::MaterialAsset& material_data);
 /**
  * @brief Updates an already allocated material.
+ * [ Direct Physical API ] fast-path for ECS Sync updates.
  */
 void UpdateMaterial(entt::registry& registry, MaterialHandle handle, const rrl::asset::MaterialAsset& material_data);
 /**
+ * @brief Updates an already allocated material.
+ * @note [ Virtualized Graph API ] Slower path for RDG / external lookup.
+ */
+void UpdateMaterial(entt::registry& registry, ResourceID id, const rrl::asset::MaterialAsset& material_data);
+/**
  * @brief Destroys a material freeing its memory.
+ * [ Direct Physical API ] fast-path for Asset GB updates.
  */
 void DestroyMaterial(entt::registry& registry, MaterialHandle handle);
+/**
+ * @brief Destroys a material freeing its memory.
+ * @note [ Virtualized Graph API ] Slower path for RDG / external lookup.
+ */
+void DestroyMaterial(entt::registry& registry, ResourceID id);
 
 
 

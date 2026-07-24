@@ -156,7 +156,7 @@ private:
     rrl::ObjectID robot_cam      = rrl::NULL_OBJECT;
     rrl::ObjectID ui_screen      = rrl::NULL_OBJECT;
     rrl::AssetID  fbo_tex        = rrl::NULL_ASSET;
-    rrl::rhi::RenderTargetHandle cam_target = rrl::rhi::TARGET_NULL;
+    rrl::rhi::ResourceID cam_target    = rrl::rhi::RESOURCE_NULL;
     
 public:
     Robot() = default;
@@ -179,7 +179,11 @@ public:
         engine.tf.SetLocalScale(robot_instance, scale);
         
         // Create the Render Target FBO and spawn and attach the robot's camera
-        cam_target = engine.rhi.CreateRenderTarget(robot_cam_width, robot_cam_height);
+        cam_target = "robot_cam_target";
+        rrl::rhi::RenderTargetDescriptor rt_desc;
+        rt_desc.width = robot_cam_width;
+        rt_desc.height = robot_cam_height;
+        engine.rhi.CreateRenderTarget(cam_target, rt_desc);
         
         rrl::camera::PerspectiveModel camera_model;
         camera_model.fov_y_radians = glm::radians(60.0f);
@@ -187,7 +191,7 @@ public:
         camera_model.z_near = 1.0f;     
         camera_model.z_far = 4000.0f;   
         
-        robot_cam = engine.camera.SpawnCamera(camera_model, cam_target, rrl::rhi::RHIRenderLayer::LAYER_DEFAULT);
+        robot_cam = engine.camera.SpawnCamera(camera_model, cam_target, rrl::rhi::RHIRenderLayerMask::LAYER_DEFAULT);
         
         // Attach the camera to the chassis
         engine.tf.AttachChild(robot_instance, robot_cam, rrl::tf::TFDependencyPolicy::CASCADE_DELETE);
@@ -215,7 +219,7 @@ public:
     }
     
     void Update(rrl::Engine& engine) {
-        if (cam_target != rrl::rhi::TARGET_NULL) {
+        if (cam_target != rrl::rhi::RESOURCE_NULL) {
             // Read back pixels from the GPU FBO and upload them to the UI texture
             rrl::asset::ImageAsset cam_feed = engine.rhi.GetTargetImage(cam_target);
             if (!cam_feed.data.empty()) {
@@ -277,7 +281,7 @@ int main() {
     rrl::ObjectID main_camera = engine.camera.SpawnCamera(camera_model);
     engine.camera.SetCameraPositionAndLookAt(main_camera, {-10.0f, 0.0f, 5.0f}, {0.0f, 0.0f, 0.0f});
     engine.camera.SetCameraLayer(main_camera, 
-        rrl::rhi::RHIRenderLayer::LAYER_DEFAULT | rrl::rhi::RHIRenderLayer::LAYER_DEBUG
+        rrl::rhi::RHIRenderLayerMask::LAYER_DEFAULT | rrl::rhi::RHIRenderLayerMask::LAYER_DEBUG
     );
     
 

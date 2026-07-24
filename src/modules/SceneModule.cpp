@@ -30,7 +30,7 @@ void SceneModule::DestroyObject(ObjectID object) {
 
 
 // --- Prefabs -----------------------------------------------------
-ObjectID SceneModule::SpawnPrefab(const scene::PrefabID& blueprint_id) {
+ObjectID SceneModule::SpawnPrefab(const rrl::asset::PrefabID& blueprint_id) {
     entt::entity root_entity = rrl::scene::SpawnPrefabInstance(m_ctx->registry, blueprint_id);
     return ToObjectID(root_entity);
 }

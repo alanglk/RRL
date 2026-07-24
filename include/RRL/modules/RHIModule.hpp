@@ -87,20 +87,20 @@ public:
     /**
      * @brief Reads rendered data from the RHI back to CPU RAM.
      */
-    rrl::asset::ImageAsset GetTargetImage(rrl::rhi::RenderTargetHandle handle = rrl::rhi::TARGET_MAIN);
+    rrl::asset::ImageAsset GetTargetImage(rrl::rhi::ResourceID id = rrl::rhi::TARGET_MAIN);
 
 
 
     // --- Render Targets (FBOs) ---------------------------------------
     /**
-     * @brief Requests the backend to create an off-screen render target.
+     * @brief Requests the backend to create an off-screen render target bound to a Virtual ResourceID.
      */
-    rrl::rhi::RenderTargetHandle CreateRenderTarget(uint32_t width, uint32_t height);
+    void CreateRenderTarget(rrl::rhi::ResourceID id, const rrl::rhi::RenderTargetDescriptor& desc);
     /**
-     * @brief Destroys an off-screen render target and frees its memory.
+     * @brief Destroys an off-screen render target and frees its memory via its Virtual ResourceID.
      * Note: TARGET_MAIN cannot be destroyed through this function.
      */
-    void DestroyRenderTarget(rrl::rhi::RenderTargetHandle handle);
+    void DestroyRenderTarget(rrl::rhi::ResourceID id);
 
 
 

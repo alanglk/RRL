@@ -21,12 +21,12 @@ struct MaterialSourceComponent {
  * @brief RHI runtime resolved links to material textures and RHI material handle
  */
 struct MaterialRuntimeComponent {
-    rhi::MaterialHandle handle { rhi::MATERIAL_NULL };
+    rhi::MaterialHandle handle { rhi::BACKEND_MATERIAL_NULL };
 
-    rhi::TextureHandle albedo_handle { rhi::TEXTURE_NULL };
-    rhi::TextureHandle normal_handle { rhi::TEXTURE_NULL };
-    rhi::TextureHandle metallic_roughness_handle { rhi::TEXTURE_NULL };
-    rhi::TextureHandle emissive_hangle { rhi::TEXTURE_NULL };
+    rhi::TextureHandle albedo_handle { rhi::BACKEND_MATERIAL_NULL };
+    rhi::TextureHandle normal_handle { rhi::BACKEND_MATERIAL_NULL };
+    rhi::TextureHandle metallic_roughness_handle { rhi::BACKEND_MATERIAL_NULL };
+    rhi::TextureHandle emissive_hangle { rhi::BACKEND_MATERIAL_NULL };
     
     uint32_t cached_mat_version { 0xFFFFFFFF };
 };

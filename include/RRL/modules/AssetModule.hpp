@@ -99,13 +99,13 @@ public:
      * Maps the provided materials 1:1 to the mesh submeshes. 
      * If 1 material is provided, it is broadcast to all submeshes.
      */
-    void BindMesh(ObjectID world_object, AssetID mesh_asset, 
+    void BindMesh(ObjectID world_object, rrl::AssetID mesh_asset, 
                   const std::vector<AssetID>& materials = {}, 
-                  rhi::RHIRenderLayer layer = rhi::RHIRenderLayer::LAYER_DEFAULT);
+                  rrl::rhi::RHIRenderLayerMask layer = rrl::rhi::RHIRenderLayerMask::LAYER_DEFAULT);
     /**
      * @brief Dynamically updates the culling layer of an already bound physical object.
      */
-    void SetMeshLayer(ObjectID world_object, rhi::RHIRenderLayer layer);
+    void SetMeshLayer(ObjectID world_object, rhi::RHIRenderLayerMask layer);
 
 
 
@@ -149,7 +149,7 @@ public:
     void BindUITexture(ObjectID ui_object, AssetID texture_asset,
                        float screen_x = 0.0f, float screen_y = 0.0f, 
                        float screen_w = 1.0f, float screen_h = 1.0f,
-                       rhi::RHIRenderLayer layer = rhi::RHIRenderLayer::LAYER_UI);
+                       rhi::RHIRenderLayerMask layer = rhi::RHIRenderLayerMask::LAYER_UI);
 
     /**
      * @brief Updates the screen dimensions of an existing 2D UI layout.
@@ -158,7 +158,7 @@ public:
     void UpdateUILayout(ObjectID ui_object, 
                         float screen_x, float screen_y, 
                         float screen_w, float screen_h, 
-                        rhi::RHIRenderLayer layer = rhi::RHIRenderLayer::LAYER_UI);
+                        rhi::RHIRenderLayerMask layer = rhi::RHIRenderLayerMask::LAYER_UI);
 
 private:
     EngineContext* m_ctx { nullptr };

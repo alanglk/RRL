@@ -57,7 +57,7 @@ SceneDebugReport GetSceneDebugReport(entt::registry& registry) {
         const auto& instance = view.get<rrl::scene::PrefabInstanceComponent>(entity);
         
         // Extract the root blueprint ID (e.g., "city.car.wheel" -> "city")
-        rrl::scene::PrefabID root_id = instance.path.substr(0, instance.path.find('.'));
+        rrl::asset::PrefabID root_id = instance.path.substr(0, instance.path.find('.'));
 
         // Does this blueprint still exist in the cache?
         auto it = report.tracked_blueprints.find(root_id);

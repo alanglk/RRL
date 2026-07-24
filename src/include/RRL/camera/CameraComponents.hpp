@@ -4,7 +4,7 @@
 #include "RRL/camera/CameraConventions.hpp"
 #include "RRL/camera/CameraModels.hpp"
 
-#include "RRL/rhi/RHITypes.hpp"
+#include "RRL/rhi/RHIBackend.hpp"
 
 
 namespace rrl::camera {
@@ -18,14 +18,9 @@ struct CameraComponent {
     CameraModelVariant model { PerspectiveModel{} };
     // Flag to know if the camera intrinsics have changed (projection computation)
     bool intrinsic_dirty { true };
-
-    // Flag to tell the RHI which camera should render onto the main screen buffer. 
-    // THere can only be just one camera with its target pointing to  rhi::TARGET_SCREEN at a time
-    rhi::RenderTargetHandle target_fbo {rhi::TARGET_MAIN};
-    
     
     // What layers can this camera see?
-    rhi::RHIRenderLayer culling_mask { rhi::RHIRenderLayer::LAYER_ALL };
+    rhi::RHIRenderLayerMask culling_mask { rhi::RHIRenderLayerMask::LAYER_ALL };
 
     // This specifies the camera render priority:
     //      Low value   -> Higher priority
@@ -33,11 +28,24 @@ struct CameraComponent {
     uint32_t render_priority = 0; 
 };
 
+/**
+ * @brief Maps a camera to a Render Target. 
+ * [THIS WILL BE DEPRECATED ON FUTURE VERSIONS]
+ * [Transition to RDG]: Currently, the RHI iterates over entities with this 
+ * component to dispatch draw calls. Once the Render Dependency Graph (RDG) 
+ * is implemented, the RDG will define passes dynamically, and this component 
+ * will be deprecated and removed.
+ */
+struct CameraOutputComponent {
+    rhi::RenderTargetHandle target_fbo { rhi::BACKEND_TARGET_MAIN };
+};
+
 
 /**
  * @brief This is the actual runtime camera data source. 
  * It holds the pre-computed VP matrices so the RHI does not 
- * have to compute them every frame.
+ * have to compute them every frame. This is instantiated by
+ * the UpdateCameras system.
  */
 struct CameraRuntimeComponent {
     glm::mat4 view_matrix { 1.0f };

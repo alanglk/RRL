@@ -48,8 +48,8 @@ public:
      */
     ObjectID SpawnCamera(
         const rrl::camera::CameraModelVariant& model = rrl::camera::PerspectiveModel{}, 
-        rrl::rhi::RenderTargetHandle target_fbo = rhi::TARGET_MAIN,
-        rrl::rhi::RHIRenderLayer layer = rhi::RHIRenderLayer::LAYER_ALL
+        rrl::rhi::ResourceID target_fbo = rhi::TARGET_MAIN,
+        rrl::rhi::RHIRenderLayerMask layer = rhi::RHIRenderLayerMask::LAYER_ALL
     );
     /**
      * @brief Removes the camera from the registry. This completely destroys the camera entity.
@@ -71,11 +71,11 @@ public:
      * @brief Sets the rendering fbo target for the given entity camera. 
      * If the target_fbo points to the same target as other camera, the other camera will point to TARGET_NULL.
      */
-    void SetCameraTarget(ObjectID cam_obj, rhi::RenderTargetHandle target_fbo);
+    void SetCameraTarget(ObjectID cam_obj, rrl::rhi::ResourceID target_fbo);
     /**
      * @brief Sets the rendering culling mask of the camera
      */
-    void SetCameraLayer(ObjectID cam_obj, rhi::RHIRenderLayer layer);
+    void SetCameraLayer(ObjectID cam_obj, rrl::rhi::RHIRenderLayerMask layer);
     /**
      * @brief Sets the rendering priority of the camera.
      * Low value    -> Higher priority

@@ -90,11 +90,11 @@ void UpdateMesh(entt::registry& registry, entt::entity mesh_asset, MeshAsset&& m
  */
 void BindMesh(entt::registry& registry, entt::entity world_object, entt::entity mesh_asset, 
               const std::vector<entt::entity>& materials = {}, 
-              rhi::RHIRenderLayer layer = rhi::RHIRenderLayer::LAYER_DEFAULT);
+              rhi::RHIRenderLayerMask layer = rhi::RHIRenderLayerMask::LAYER_DEFAULT);
 /**
  * @brief Dynamically updates the culling layer of an already bound physical object.
  */
-void SetMeshLayer(entt::registry& registry, entt::entity world_object, rhi::RHIRenderLayer layer);
+void SetMeshLayer(entt::registry& registry, entt::entity world_object, rhi::RHIRenderLayerMask layer);
 
 
 
@@ -126,7 +126,7 @@ void BindMaterialTexture(entt::registry& registry, entt::entity material_asset, 
 void BindUITexture(entt::registry& registry, entt::entity ui_object, entt::entity texture_asset,
                    float screen_x = 0.0f, float screen_y = 0.0f, 
                    float screen_w = 1.0f, float screen_h = 1.0f,
-                   rhi::RHIRenderLayer layer = rhi::RHIRenderLayer::LAYER_UI);
+                   rhi::RHIRenderLayerMask layer = rhi::RHIRenderLayerMask::LAYER_UI);
 
 /**
  * @brief Updates the screen dimensions of an existing 2D UI layout.
@@ -135,7 +135,7 @@ void BindUITexture(entt::registry& registry, entt::entity ui_object, entt::entit
 void UpdateUILayout(entt::registry& registry, entt::entity ui_object, 
                     float screen_x, float screen_y, 
                     float screen_w, float screen_h, 
-                    rhi::RHIRenderLayer layer = rhi::RHIRenderLayer::LAYER_UI);
+                    rhi::RHIRenderLayerMask layer = rhi::RHIRenderLayerMask::LAYER_UI);
 
 
 // --- GB Interface ------------------------------------------------

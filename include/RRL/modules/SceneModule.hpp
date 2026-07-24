@@ -3,11 +3,13 @@
 
 #include <RRL/rrl_export.h>
 
-
 #include "RRL/RRLTypes.hpp"
-#include "RRL/scene/SceneTypes.hpp"
+#include "RRL/asset/AssetTypes.hpp"
+
 
 #include <glm/glm.hpp>
+
+
 
 namespace rrl {
 
@@ -51,7 +53,7 @@ public:
      * SpawnPrefab("rungholt_city.vehicle_1")
      * @return ObjectID The Root Entity, or NULL_OBJECT if the blueprint isn't cached.
      */
-    ObjectID SpawnPrefab(const rrl::scene::PrefabID& blueprint_id);
+    ObjectID SpawnPrefab(const rrl::asset::PrefabID& blueprint_id);
     /**
      * @brief Destroys a spawned prefab.
      */

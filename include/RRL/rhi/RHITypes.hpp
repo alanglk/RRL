@@ -3,10 +3,63 @@
 
 #include <RRL/rrl_export.h>
 #include <cstdint>
+#include <vector>
+#include <functional> // For std::hash
 
 
+// --- ResourceID --------------------------------------------------
 namespace rrl::rhi {
 
+// Compile-time FNV-1a 32-bit hash algorithm
+namespace detail {
+    constexpr uint32_t fnv1a_32(const char* s, std::size_t count) {
+        uint32_t hash = 2166136261u;
+        for (std::size_t i = 0; i < count; ++i) {
+            hash ^= static_cast<uint8_t>(s[i]);
+            hash *= 16777619u;
+        }
+        return hash;
+    }
+} // namespace detail
+
+
+/**
+ * @brief Identifier for all RHI resources (FBOs, Textures, Meshes, etc.)
+ * Can be auto-generated or instantiated at compile-time via string literal.
+ */
+struct ResourceID {
+    uint32_t id = 0;
+    
+    constexpr ResourceID() = default;
+    constexpr explicit ResourceID(uint32_t val) : id(val) {}
+    
+    // Auto-hash string literals at compile time (e.g., ResourceID("SceneColor"))
+    template <std::size_t N>
+    constexpr ResourceID(const char (&str)[N]) : id(detail::fnv1a_32(str, N - 1)) {}
+    
+    constexpr bool operator==(const ResourceID& other) const { return id == other.id; }
+    constexpr bool operator!=(const ResourceID& other) const { return id != other.id; }
+};
+
+constexpr ResourceID RESOURCE_NULL = ResourceID{0xFFFFFFFF};
+constexpr ResourceID TARGET_MAIN   = ResourceID{0}; // The Screen Swapchain
+
+} // namespace rrl::rhi
+
+
+
+// Hash support for ResourceID to be used in std::unordered_map
+template <>
+struct std::hash<rrl::rhi::ResourceID> {
+    std::size_t operator()(const rrl::rhi::ResourceID& k) const {
+        return k.id;
+    }
+};
+
+
+
+// --- RHI Types ---------------------------------------------------
+namespace rrl::rhi {
 
 /**
  * @brief Runtime flags for the RHI to toggle debug rendering features.
@@ -30,7 +83,7 @@ enum class RHIDebugFlag : uint32_t {
  * camera.culling_mask = rhi::LAYER_DEFAULT | rhi::LAYER_DEBUG;
  *  - 3. The RHI evaluates visibility using a bitwise AND
  */
-enum class RHIRenderLayer : uint32_t {
+enum class RHIRenderLayerMask : uint32_t {
     LAYER_NONE     = 0,
     LAYER_DEFAULT  = 1 << 0,  // Standard world objects (1)
     LAYER_UI       = 1 << 1,  // 2D UI elements (2)
@@ -70,10 +123,25 @@ struct RRL_API RHIWindow {
 };
 
 
-// RHI rendering target ID (enable off-screen rendering support)
-using RenderTargetHandle = uint32_t;
-constexpr RenderTargetHandle TARGET_MAIN = 0;           // Handle 0 is reserved for the Screen / Main Target
-constexpr RenderTargetHandle TARGET_NULL = 0xFFFFFFFF;  // Null handle
+/**
+ * @brief Describes the attachments for a Render Target (FBO).
+ * Textures must be allocated via the RHIBackend before creating the FBO.
+ */
+struct RenderTargetDescriptor {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    
+    // Multiple Render Targets (MRT). OpenGL supports up to 8.
+    std::vector<rrl::rhi::ResourceID> color_attachments; // We need another ID here that should be resolved on the rrl::rhi::CreateRenderTarget call to the actual rrl::rhi::TextureHandle
+    
+    // Optional: depth or depth-stencil attachment
+    rrl::rhi::ResourceID depth_stencil_attachment = rrl::rhi::RESOURCE_NULL;
+    
+    // Optional: If true, this FBO targets a specific texture of a Texture Array
+    bool is_texture_array = false;
+    uint32_t array_idx = 0;  // The current rendering texture target on the color_attachments
+};
+
 
 
 // RHIDebugFlag bitwise operations
@@ -95,19 +163,19 @@ inline RHIDebugFlag& operator&=(RHIDebugFlag& a, RHIDebugFlag b) {
 
 
 // RHIRenderLayer bitwise operations
-inline constexpr RHIRenderLayer operator|(RHIRenderLayer a, RHIRenderLayer b) { 
-    return static_cast<RHIRenderLayer>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b)); 
+inline constexpr RHIRenderLayerMask operator|(RHIRenderLayerMask a, RHIRenderLayerMask b) { 
+    return static_cast<RHIRenderLayerMask>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b)); 
 }
-inline constexpr RHIRenderLayer operator&(RHIRenderLayer a, RHIRenderLayer b) { 
-    return static_cast<RHIRenderLayer>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b)); 
+inline constexpr RHIRenderLayerMask operator&(RHIRenderLayerMask a, RHIRenderLayerMask b) { 
+    return static_cast<RHIRenderLayerMask>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b)); 
 }
-inline constexpr RHIRenderLayer operator~(RHIRenderLayer a) { 
-    return static_cast<RHIRenderLayer>(~static_cast<uint32_t>(a)); 
+inline constexpr RHIRenderLayerMask operator~(RHIRenderLayerMask a) { 
+    return static_cast<RHIRenderLayerMask>(~static_cast<uint32_t>(a)); 
 }
-inline RHIRenderLayer& operator|=(RHIRenderLayer& a, RHIRenderLayer b) { 
+inline RHIRenderLayerMask& operator|=(RHIRenderLayerMask& a, RHIRenderLayerMask b) { 
     return a = a | b; 
 }
-inline RHIRenderLayer& operator&=(RHIRenderLayer& a, RHIRenderLayer b) { 
+inline RHIRenderLayerMask& operator&=(RHIRenderLayerMask& a, RHIRenderLayerMask b) { 
     return a = a & b; 
 }
 

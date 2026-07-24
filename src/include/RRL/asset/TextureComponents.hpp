@@ -24,7 +24,7 @@ struct TextureSourceComponent {
  * Managed entirely by the Render System. Do not touch from any other thread!
  */
 struct TextureRuntimeComponent {
-    rhi::TextureHandle handle { rhi::TEXTURE_NULL };
+    rhi::TextureHandle handle { rhi::BACKEND_TEXTURE_NULL };
     uint32_t cached_tex_version { 0xFFFFFFFF };
 };
 
@@ -42,7 +42,7 @@ struct TextureLinkage {
     float screen_h { 1.0f }; // Full height default
     
     // What layer does this UI element belong to?
-    rhi::RHIRenderLayer layer_mask { rhi::RHIRenderLayer::LAYER_UI };
+    rhi::RHIRenderLayerMask layer_mask { rhi::RHIRenderLayerMask::LAYER_UI };
 };
 
 

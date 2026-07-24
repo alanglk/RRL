@@ -3,8 +3,11 @@
 #include "RRL/modules/CameraModule.hpp"
 #include "RRL/camera/CameraManager.hpp"
 
+#include "RRL/rhi/RHITypes.hpp"
+
 #include "RRL/EngineContext.hpp"
 #include "RRL/EnttCasting.hpp"
+
 
 namespace rrl {
 
@@ -27,8 +30,8 @@ void CameraModule::UpdateCameras(const rrl::camera::NDCConvention& ndc_target) {
 // --- Lifecycle ---------------------------------------------------
 ObjectID CameraModule::SpawnCamera(
     const rrl::camera::CameraModelVariant& model, 
-    rrl::rhi::RenderTargetHandle target_fbo,
-    rrl::rhi::RHIRenderLayer layer
+    rrl::rhi::ResourceID target_fbo,
+    rrl::rhi::RHIRenderLayerMask layer
 ) {
     return ToObjectID( rrl::camera::SpawnCamera(m_ctx->registry, model, target_fbo, layer) );
 }
@@ -45,10 +48,10 @@ void CameraModule::DestroyAllCameras() {
 void CameraModule::SetCameraModel(ObjectID cam_obj, const rrl::camera::CameraModelVariant& model) {
     rrl::camera::SetCameraModel(m_ctx->registry, ToEntt(cam_obj), model);
 }
-void CameraModule::SetCameraTarget(ObjectID cam_obj, rhi::RenderTargetHandle target_fbo) {
+void CameraModule::SetCameraTarget(ObjectID cam_obj, rrl::rhi::ResourceID target_fbo) {
     rrl::camera::SetCameraTarget(m_ctx->registry, ToEntt(cam_obj), target_fbo);
 }
-void CameraModule::SetCameraLayer(ObjectID cam_obj, rhi::RHIRenderLayer layer) {
+void CameraModule::SetCameraLayer(ObjectID cam_obj, rrl::rhi::RHIRenderLayerMask layer) {
     rrl::camera::SetCameraLayer(m_ctx->registry, ToEntt(cam_obj), layer);
 }
 void CameraModule::SetCameraRenderPriority(ObjectID cam_obj, uint32_t render_priority) {

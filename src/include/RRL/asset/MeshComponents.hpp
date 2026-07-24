@@ -24,7 +24,7 @@ struct MeshSourceComponent {
  * Managed entirely by the Render System. Do not touch from any other thread!
  */
 struct MeshRuntimeComponent {
-    rhi::MeshHandle handle { rhi::MESH_NULL };
+    rhi::MeshHandle handle { rhi::BACKEND_MESH_NULL };
     uint32_t cached_mesh_version { 0xFFFFFFFF };
 };
 
@@ -38,7 +38,7 @@ struct MeshLinkage {
     std::vector<entt::entity> materials;
 
     // What layer does this physical object belong to?
-    rhi::RHIRenderLayer layer_mask { rhi::RHIRenderLayer::LAYER_DEFAULT };
+    rhi::RHIRenderLayerMask layer_mask { rhi::RHIRenderLayerMask::LAYER_DEFAULT };
 };
 
 } // namespace rrl::asset

@@ -80,7 +80,7 @@ void AssetModule::UpdateMesh(AssetID mesh_asset, rrl::asset::MeshAsset&& mesh_da
 
 void AssetModule::BindMesh(ObjectID world_object, AssetID mesh_asset, 
               const std::vector<AssetID>& materials, 
-              rhi::RHIRenderLayer layer) {
+              rhi::RHIRenderLayerMask layer) {
     
     // We must unpack the strong-typed AssetIDs into a vector of raw entt::entities
     std::vector<entt::entity> internal_materials;
@@ -92,7 +92,7 @@ void AssetModule::BindMesh(ObjectID world_object, AssetID mesh_asset,
     rrl::asset::BindMesh(m_ctx->registry, ToEntt(world_object), ToEntt(mesh_asset), internal_materials, layer);
 }
 
-void AssetModule::SetMeshLayer(ObjectID world_object, rhi::RHIRenderLayer layer) {
+void AssetModule::SetMeshLayer(ObjectID world_object, rhi::RHIRenderLayerMask layer) {
     rrl::asset::SetMeshLayer(m_ctx->registry, ToEntt(world_object), layer);
 }
 
@@ -131,14 +131,14 @@ void AssetModule::UnloadPrefabBlueprint(const rrl::asset::PrefabID& blueprint_id
 void AssetModule::BindUITexture(ObjectID ui_object, AssetID texture_asset,
                    float screen_x, float screen_y, 
                    float screen_w, float screen_h,
-                   rhi::RHIRenderLayer layer) {
+                   rhi::RHIRenderLayerMask layer) {
     rrl::asset::BindUITexture(m_ctx->registry, ToEntt(ui_object), ToEntt(texture_asset), screen_x, screen_y, screen_w, screen_h, layer);
 }
 
 void AssetModule::UpdateUILayout(ObjectID ui_object, 
                     float screen_x, float screen_y, 
                     float screen_w, float screen_h, 
-                    rhi::RHIRenderLayer layer) {
+                    rhi::RHIRenderLayerMask layer) {
     rrl::asset::UpdateUILayout(m_ctx->registry, ToEntt(ui_object), screen_x, screen_y, screen_w, screen_h, layer);
 }
 
