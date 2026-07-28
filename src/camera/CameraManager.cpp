@@ -132,6 +132,7 @@ void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
             // Optimization: Camera matrices are affine, so we use standard inverse.
             runtime.view_matrix = local_to_view * glm::inverse(world_tf.matrix);
             runtime.cached_tf_version = world_tf.version; // Sync the versions
+
         }
 
 
