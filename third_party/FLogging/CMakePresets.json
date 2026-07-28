@@ -1,0 +1,92 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 15,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "Development (Debug + Quill + Tests)",
+      "description": "Default debug build with Quill backend and GTest enabled.",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ENABLE_QUILL": "ON",
+        "ENABLE_TESTING": "ON",
+        "FLOGGING_SHARED": "OFF"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release (Optimized + Quill)",
+      "description": "Optimized release build for production use.",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ENABLE_QUILL": "ON",
+        "ENABLE_TESTING": "OFF",
+        "FLOGGING_SHARED": "OFF"
+      }
+    },
+    {
+      "name": "std-fallback",
+      "displayName": "StdFormat Fallback (Debug + Tests)",
+      "description": "Tests the library without Quill to ensure standard fmt fallback works.",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ENABLE_QUILL": "OFF",
+        "ENABLE_TESTING": "ON",
+        "FLOGGING_SHARED": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "std-fallback",
+      "configurePreset": "std-fallback"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    },
+    {
+      "name": "std-fallback",
+      "configurePreset": "std-fallback",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    }
+  ]
+}

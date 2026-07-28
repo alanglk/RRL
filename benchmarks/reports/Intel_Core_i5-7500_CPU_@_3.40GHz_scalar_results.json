@@ -1,0 +1,38 @@
+{
+  "context": {
+    "date": "2026-07-12T17:06:59+02:00",
+    "host_name": "alanglkPC",
+    "executable": "./build/benchmarks/scalar/bin/bm_swr_opencv_rungholt",
+    "num_cpus": 4,
+    "mhz_per_cpu": 3800,
+    "cpu_scaling_enabled": true,
+    "caches": [
+      {
+        "type": "Data",
+        "level": 1,
+        "size": 32768,
+        "num_sharing": 1
+      },
+      {
+        "type": "Instruction",
+        "level": 1,
+        "size": 32768,
+        "num_sharing": 1
+      },
+      {
+        "type": "Unified",
+        "level": 2,
+        "size": 262144,
+        "num_sharing": 1
+      },
+      {
+        "type": "Unified",
+        "level": 3,
+        "size": 6291456,
+        "num_sharing": 4
+      }
+    ],
+    "load_avg": [2.58447,1.6499,1.5249],
+    "library_build_type": "release"
+  },
+  "benchmarks": [

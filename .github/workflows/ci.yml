@@ -1,0 +1,100 @@
+#.github/workflows/ci.yml
+name: RRL CI Pipeline
+
+# --- CI Execution Policies ---------------------------------------
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+    # --- Testing | Coverage ----------------------------------------
+    test-and-coverage:
+        name: Ubuntu Building / Testing
+        runs-on: ubuntu-latest
+        steps:
+        - name: Checkout Code
+          uses: actions/checkout@v4
+          with:
+            submodules: recursive 
+
+        # Linux Dependencies
+        - name: Setup ccache
+          uses: hendrikmuhs/ccache-action@v1.2
+          with:
+            key: codeql-ccache
+        - name: Install Linux Dependencies
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev libxkbcommon-dev libwayland-dev xorg-dev lcov
+
+        # Build and run tests
+        - name: Configure Tests
+          run: cmake --preset test
+        - name: Build Tests
+          run: cmake --build --preset test
+        - name: Run Tests
+          run: ctest --preset run-tests
+
+        # Coverage Reporting 
+        - name: Generate LCOV Report
+          run: |
+            # Capture the raw coverage data, ignoring macro expansion mismatch quirks
+            lcov --capture --directory build/test --output-file coverage.info --ignore-errors mismatch,gcov
+            # Strip out third-party libs, system headers, and the test files themselves
+            lcov --remove coverage.info '/usr/*' '*/third_party/*' '*/test/*' '*/examples/*' --output-file coverage.info --ignore-errors mismatch,gcov,unused
+            # Print a quick summary to the GitHub Actions terminal
+            lcov --list coverage.info
+        - name: Upload to Codecov
+          uses: codecov/codecov-action@v4
+          with:
+            file: ./coverage.info
+            fail_ci_if_error: false
+            token: ${{ secrets.CODECOV_TOKEN }}
+
+
+    # --- Static Analysis -------------------------------------------
+    static-analysis:
+        name: CodeQL Analysis
+        runs-on: ubuntu-latest
+    
+        # Required permissions to upload the results to GitHub's Security Tab
+        permissions:
+          actions: read
+          contents: read
+          security-events: write
+
+        steps:
+        - name: Checkout Code
+          uses: actions/checkout@v4
+          with:
+            submodules: recursive 
+
+        # Linux Dependencies
+        - name: Setup ccache
+          uses: hendrikmuhs/ccache-action@v1.2
+          with:
+            key: codeql-ccache
+        - name: Install Linux Dependencies
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y ninja-build libglfw3-dev libopencv-dev libfmt-dev libboost-dev libxkbcommon-dev libwayland-dev xorg-dev
+
+        # Initialize the CodeQL Tracer
+        - name: Initialize CodeQL
+          uses: github/codeql-action/init@v3
+          with:
+            languages: cpp
+            queries: security-and-quality 
+
+        # Build the code (CodeQL intercepts the compiler to analyze the AST)
+        - name: Configure Tests
+          run: cmake --preset test
+        - name: Build Tests
+          run: cmake --build --preset test
+
+        # Finalize and upload the dashboard results
+        - name: Perform CodeQL Analysis
+          uses: github/codeql-action/analyze@v3

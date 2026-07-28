@@ -1,0 +1,401 @@
+// RRL/src/camera/CameraManager.cpp
+
+#include "RRL/camera/CameraManager.hpp"
+#include "RRL/EnttCasting.hpp"
+
+#include "RRL/asset/TextureComponents.hpp"
+#include "RRL/camera/CameraComponents.hpp"
+
+#include "RRL/camera/CameraConventions.hpp"
+#include "RRL/rhi/RHIBackend.hpp"
+#include "RRL/rhi/RHITypes.hpp"
+#include "RRL/rhi/RHIBackendManager.hpp"
+
+#include "RRL/scene/SceneManager.hpp"
+#include "RRL/tf/TFComponents.hpp"
+#include "RRL/tf/TransformTree.hpp"
+
+#include <FLogging/FLogging.hpp>
+
+#include "RRL/DebugMacros.hpp"
+
+
+namespace rrl::camera {
+    
+
+// Matrix to map ISO 8855 (X-front, Y-left, Z-up) 
+// to standard OpenGL View Space (X-right, Y-up, Z-backward)
+constexpr glm::mat4 LCS_TO_CCS = glm::mat4(
+    0.0f,  0.0f, -1.0f,  0.0f, 
+   -1.0f,  0.0f,  0.0f,  0.0f, 
+    0.0f,  1.0f,  0.0f,  0.0f, 
+    0.0f,  0.0f,  0.0f,  1.0f
+);
+
+
+
+// --- Helpers -----------------------------------------------------
+static glm::quat CalculateLookAtRotation(const glm::vec3& eye, const glm::vec3& target, const glm::vec3& world_up) {
+    glm::vec3 forward = target - eye;
+    if (glm::length(forward) < 0.0001f) return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    
+    forward = glm::normalize(forward);
+    glm::vec3 left = glm::normalize(glm::cross(world_up, forward));
+    glm::vec3 true_up = glm::cross(forward, left);
+    
+    return glm::quat_cast(glm::mat3(forward, left, true_up));
+}
+static rhi::RenderTargetHandle GetRenderTargetHandle(rhi::ResourceID id) {
+    if (id == rhi::TARGET_MAIN) return rhi::BACKEND_TARGET_MAIN;
+    if (id == rhi::RESOURCE_NULL) return rhi::BACKEND_TARGET_NULL;
+    
+    auto& backend = rhi::RHIBackendManager::Instance().GetBackend();
+    RRL_ASSERT(backend.type != rhi::RHIBackendType::NONE, "RHI Backend not loaded!");
+    RRL_ASSERT(backend.Initialize != nullptr, "RHI Backend not loaded!");
+    
+    return backend.cache.GetPhysicalTarget(id);
+}
+
+// --- Lifecycle ---------------------------------------------------
+void InitializeCameraManager(entt::registry& registry) {
+    registry.ctx().emplace<CameraCache>();
+}
+void UpdateCameras(entt::registry& registry, const NDCConvention& ndc_target) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+
+    // Sort cameras by priority
+    auto& cache = registry.ctx().get<CameraCache>();
+    if (cache.priority_dirty) {
+        registry.sort<CameraComponent>([](const CameraComponent& lhs, const CameraComponent& rhs) {
+            return lhs.render_priority < rhs.render_priority;
+        });
+        cache.priority_dirty = false;
+    }
+    
+    // Initialize runtime components for brand new cameras (Zero-branching in main loop)
+    auto new_cams = registry.view<CameraComponent>(entt::exclude<CameraRuntimeComponent>);
+    for (auto entity : new_cams) {
+        registry.emplace<CameraRuntimeComponent>(entity);
+        registry.get<CameraComponent>(entity).intrinsic_dirty = true; // Force an update 
+    }
+
+    // Update camera runtime matrices
+    auto view = registry.view<CameraComponent, tf::TFWorldTransformComponent>();
+    for (auto entity : view) {
+        auto& cam = view.get<CameraComponent>(entity);
+        auto& runtime = registry.get<CameraRuntimeComponent>(entity);
+        const auto& world_tf = view.get<tf::TFWorldTransformComponent>(entity);
+
+
+        // Resolve the background texture if the camera is in OVERRIDE_FLAT_TEXTURE mode
+        if (cam.bg_mode == CameraBackgroundMode::OVERRIDE_FLAT_TEXTURE) {
+            if (cam.bg_override_texture != rrl::NULL_ASSET) {
+                entt::entity tex_ent = ToEntt(cam.bg_override_texture);
+                if (registry.valid(tex_ent) && registry.all_of<rrl::asset::TextureRuntimeComponent>(tex_ent)) {
+                    runtime.resolved_bg_texture = registry.get<rrl::asset::TextureRuntimeComponent>(tex_ent).handle;
+                } else {
+                    runtime.resolved_bg_texture = rhi::BACKEND_TEXTURE_NULL;
+                }
+            } else {
+                runtime.resolved_bg_texture = rhi::BACKEND_TEXTURE_NULL;
+            }
+        }
+
+        // Dirty flags
+        bool spatial_changed = (runtime.cached_tf_version != world_tf.version);
+        bool intrinsic_changed = cam.intrinsic_dirty || (runtime.cached_ndc_target != ndc_target);
+
+        // Skip entity if nothing changed
+        if (!spatial_changed && !intrinsic_changed) {
+            continue; 
+        }
+
+        // Update the View Matrix
+        if (spatial_changed) {
+            // world_tf.matrix maps from the Camera's Local Space to World Space (ISO 8855).
+            // glm::inverse(world_tf.matrix) maps World Space into the Camera's Local Space.
+            // We must now map from that Local Space into the engine's internal Graphics View Space (-Z fwd, +Y up).
+            
+            glm::mat4 local_to_view(1.0f);
+            if (cam.view_basis == rrl::camera::CameraViewBasis::STANDARD_OPENGL) {
+                // Engine default cameras (from LookAt) are built in standard ISO 8855 space (+X fwd, +Y left, +Z up).
+                // We use LCS_TO_CCS to map ISO 8855 to Graphics View Space.
+                local_to_view = LCS_TO_CCS;
+            } 
+            else if (cam.view_basis == rrl::camera::CameraViewBasis::STANDARD_OPENCV) {
+                // Robotic cameras natively provide their extrinsics in OpenCV space (+X right, +Y down, +Z fwd).
+                // To map OpenCV to Graphics View Space (-Z fwd, +Y up), we scale Y and Z by -1.
+                local_to_view = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, -1.0f, -1.0f));
+            }
+
+            // Compute final view matrix: World -> Local Space -> Graphics View Space
+            // Optimization: Camera matrices are affine, so we use standard inverse.
+            runtime.view_matrix = local_to_view * glm::inverse(world_tf.matrix);
+            runtime.cached_tf_version = world_tf.version; // Sync the versions
+        }
+
+
+        // Update the Projection Matrix
+        if (intrinsic_changed) {
+            runtime.projection_matrix = std::visit([&ndc_target](auto&& model) -> glm::mat4 {
+                using T = std::decay_t<decltype(model)>;
+                glm::mat4 proj(1.0f);
+
+                if constexpr (std::is_same_v<T, PerspectiveModel>) {
+                    proj = glm::perspectiveRH_NO(model.fov_y_radians, model.aspect_ratio, model.z_near, model.z_far);
+                    if (ndc_target.depth_range == NDCDepth::ZERO_TO_ONE) {
+                        proj = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f)) * proj;
+                        proj = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 1.0f)) * proj;
+                    }
+                    // GLM's RH_NO natively maps Y UP. We only flip if the target wants Y DOWN.
+                    if (ndc_target.y_direction == NDCYDirection::DOWN) { proj[1][1] *= -1.0f; }
+                } 
+                else if constexpr (std::is_same_v<T, OrthographicModel>) {
+                    float half_w = model.width * 0.5f; float half_h = model.height * 0.5f;
+                    proj = glm::orthoRH_NO(-half_w, half_w, -half_h, half_h, model.z_near, model.z_far);
+                    if (ndc_target.depth_range == NDCDepth::ZERO_TO_ONE) {
+                        proj[2][2] = -1.0f / (model.z_far - model.z_near);
+                        proj[3][2] = -model.z_near / (model.z_far - model.z_near);
+                    }
+                    // GLM's RH_NO natively maps Y UP. We only flip if the target wants Y DOWN.
+                    if (ndc_target.y_direction == NDCYDirection::DOWN) { proj[1][1] *= -1.0f; }
+                }
+                else if constexpr (std::is_same_v<T, PinholeModel>) {
+                    float w = static_cast<float>(model.width_px); 
+                    float h = static_cast<float>(model.height_px);
+                    
+                    proj = glm::mat4(0.0f);
+                    
+                    // Focal Lengths
+                    proj[0][0] = (2.0f * model.fx) / w;
+                    proj[1][1] = (2.0f * model.fy) / h;
+                    
+                    // Principal Point Offsets 
+                    // Sign inversion on cx vs cy ensures OpenGL -Z forward math holds true.
+                    proj[2][0] = 1.0f - (2.0f * model.cx) / w; 
+                    proj[2][1] = (2.0f * model.cy) / h - 1.0f; 
+                    
+                    // Coordinate System Depth (W_c = -Z)
+                    proj[2][3] = -1.0f;
+                    
+                    // Depth Clipping (Mapping -Z view space to target NDC Depth)
+                    if (ndc_target.depth_range == NDCDepth::ZERO_TO_ONE) {
+                        proj[2][2] = -model.z_far / (model.z_far - model.z_near);
+                        proj[3][2] = -(model.z_far * model.z_near) / (model.z_far - model.z_near);
+                    } else { // MINUS_ONE_TO_ONE
+                        proj[2][2] = -(model.z_far + model.z_near) / (model.z_far - model.z_near);
+                        proj[3][2] = -(2.0f * model.z_far * model.z_near) / (model.z_far - model.z_near);
+                    }
+                    
+                    // Target Y-Direction Adjustment
+                    // Because this matrix is now correctly mapped to standard OpenGL eye space 
+                    // (Right-Handed, Y-UP natively), we must flip it if the target wants Y-DOWN.
+                    if (ndc_target.y_direction == NDCYDirection::DOWN) {
+                        proj[1][1] *= -1.0f; 
+                        proj[2][1] *= -1.0f;
+                    }
+                }
+                return proj;
+            }, cam.model);
+
+            runtime.cached_ndc_target = ndc_target;
+            cam.intrinsic_dirty = false; // Clear the flag!
+        }
+
+        // Compute final updated VP matrix
+        runtime.view_projection_matrix = runtime.projection_matrix * runtime.view_matrix;
+
+    }
+
+}
+entt::entity SpawnCamera(entt::registry& registry, const CameraModelVariant& model, CameraViewBasis view_basis, rhi::ResourceID target_fbo, rhi::RHIRenderLayerMask layer) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    auto& cache = registry.ctx().get<CameraCache>();
+    
+    // Ensure no other camera points to the same target_fbo (ignoring TARGET_NULL)
+    auto physical_fbo = GetRenderTargetHandle(target_fbo);
+    if (physical_fbo != rhi::BACKEND_TARGET_NULL) {
+        auto view = registry.view<CameraOutputComponent>();
+        for (auto e : view) {
+            auto& output = view.get<CameraOutputComponent>(e);
+            if (output.target_fbo == physical_fbo) {
+                output.target_fbo = rhi::BACKEND_TARGET_NULL;  
+            }
+        }
+    } else {
+        LOG_ERROR("SpawnCamera failed: Provided ResourceID ({}) is not a valid Render Target. Defaulting to BACKEND_TARGET_NULL.", target_fbo.id);
+    }
+    
+    // Add default root transform
+    entt::entity entity = rrl::scene::SpawnObject(registry);
+    tf::AddTransform(registry, entity);
+    
+    // intrinsic_dirty is true by default in the struct.
+    uint32_t render_priority = cache.next_priority++;
+    registry.emplace<CameraComponent>(entity, model, view_basis, true, layer, render_priority);
+    registry.emplace<CameraOutputComponent>(entity, physical_fbo);
+    cache.priority_dirty = true;
+    
+    return entity;
+}
+void DestroyCamera(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "DestroyCamera failed: Entity lacks a CameraComponent!");
+    rrl::scene::DestroyObject(registry, cam_entity);
+}
+void DestroyAllCameras(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    // Copy to avoid iterator invalidation during destruction 
+    std::vector<entt::entity> cameras = GetAllCameras(registry);
+    for (auto e : cameras) {
+        DestroyCamera(registry, e);
+    }
+}
+
+
+
+// --- Setters -----------------------------------------------------
+void SetCameraModel(entt::registry& registry, entt::entity cam_entity, const CameraModelVariant& model) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraModel failed: Entity lacks a CameraComponent!");
+    
+    auto& cam = registry.get<CameraComponent>(cam_entity);
+    cam.model = model;
+    cam.intrinsic_dirty = true; // Triggers the projection rebuild on the next tick
+}
+void SetPrimaryCamera(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    SetCameraTarget(registry, cam_entity, rhi::TARGET_MAIN);
+}
+void SetCameraTarget(entt::registry& registry, entt::entity cam_entity, rhi::ResourceID target_fbo) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraTarget failed: Entity lacks a CameraComponent!");
+    auto physical_fbo = GetRenderTargetHandle(target_fbo);
+
+    if (physical_fbo != rhi::BACKEND_TARGET_NULL) {
+        // Ensure no other camera points to the same target_fbo
+        auto view = registry.view<CameraOutputComponent>();
+        for (auto e : view) {
+            if (e != cam_entity && view.get<CameraOutputComponent>(e).target_fbo == physical_fbo) {
+                view.get<CameraOutputComponent>(e).target_fbo = rhi::BACKEND_TARGET_NULL;
+            }
+        }
+    } else {
+        LOG_ERROR("SetCameraTarget failed: Provided ResourceID ({}) is not a valid Render Target.", target_fbo.id);
+        return;
+    }
+
+    // Assign the new target via the temporal component
+    if (registry.all_of<CameraOutputComponent>(cam_entity)) {
+        registry.get<CameraOutputComponent>(cam_entity).target_fbo = physical_fbo;
+    } else {
+        registry.emplace<CameraOutputComponent>(cam_entity, physical_fbo);
+    }
+}
+void SetCameraLayer(entt::registry& registry, entt::entity cam_entity, rhi::RHIRenderLayerMask layer) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraTarget failed: Entity lacks a CameraComponent!");
+    auto& cam = registry.get<CameraComponent>(cam_entity);
+    cam.culling_mask = layer;
+}
+void SetCameraPriority(entt::registry& registry, entt::entity cam_entity, uint32_t priority) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraPriority failed: Entity lacks a CameraComponent!");
+    auto& cache = registry.ctx().get<CameraCache>();
+    auto& cam = registry.get<CameraComponent>(cam_entity);
+    if (cam.render_priority != priority) {
+        cam.render_priority = priority;
+        cache.priority_dirty = true;
+    }
+}
+void SetCameraPositionAndLookAt(entt::registry& registry, entt::entity cam_entity, const glm::vec3& pos, const glm::vec3& target, const glm::vec3& world_up) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    glm::quat rotation = CalculateLookAtRotation(pos, target, world_up);
+    tf::SetLocalPosition(registry, cam_entity, pos);
+    tf::SetLocalRotation(registry, cam_entity, rotation);
+}
+void SetCameraLookAt(entt::registry& registry, entt::entity cam_entity, const glm::vec3& target, const glm::vec3& world_up) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    glm::vec3 current_pos = tf::GetLocalPosition(registry, cam_entity);
+    glm::quat rotation = CalculateLookAtRotation(current_pos, target, world_up);
+    tf::SetLocalRotation(registry, cam_entity, rotation);
+}
+
+
+
+// --- Getters -----------------------------------------------------
+std::vector<entt::entity> GetAllCameras(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    auto view = registry.view<CameraComponent>();
+    return std::vector<entt::entity>(view.begin(), view.end());
+}
+CameraModelVariant GetCameraModel(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "GetCameraModel failed: Entity lacks a CameraComponent!");
+    return registry.get<CameraComponent>(cam_entity).model;
+}
+entt::entity GetPrimaryCamera(entt::registry& registry) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    
+    // Query the provisional CameraOutputComponent for the target mapping
+    auto view = registry.view<CameraOutputComponent>();
+    for (auto entity : view) {
+        if (view.get<CameraOutputComponent>(entity).target_fbo == rhi::BACKEND_TARGET_MAIN) {
+            return entity;
+        }
+    }
+    return entt::null;
+}
+static const glm::mat4 CAMERA_FALLBACK_IDENTITY(1.0f);
+const glm::mat4& GetViewMatrix(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    if (!registry.all_of<CameraRuntimeComponent>(cam_entity)) {
+        LOG_WARN("GetViewMatrix called on a camera before UpdateCameras() was executed! Returning identity matrix.");
+        return CAMERA_FALLBACK_IDENTITY;
+    }
+    return registry.get<CameraRuntimeComponent>(cam_entity).view_matrix;
+}
+const glm::mat4& GetProjectionMatrix(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    if (!registry.all_of<CameraRuntimeComponent>(cam_entity)) {
+        LOG_WARN("GetProjectionMatrix called on a camera before UpdateCameras() was executed! Returning identity matrix.");
+        return CAMERA_FALLBACK_IDENTITY;
+    }
+    return registry.get<CameraRuntimeComponent>(cam_entity).projection_matrix;
+}
+const glm::mat4& GetViewProjectionMatrix(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    if (!registry.all_of<CameraRuntimeComponent>(cam_entity)) {
+        LOG_WARN("GetViewProjectionMatrix called on a camera before UpdateCameras() was executed! Returning identity matrix.");
+        return CAMERA_FALLBACK_IDENTITY;
+    }
+    return registry.get<CameraRuntimeComponent>(cam_entity).view_projection_matrix;
+}
+
+
+
+// --- Camera Background Overrides ---------------------------------
+void SetCameraBackgroundToScene(entt::registry& registry, entt::entity cam_entity) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraBackgroundToScene failed!");
+    auto& cam = registry.get<CameraComponent>(cam_entity);
+    cam.bg_mode = CameraBackgroundMode::DEFAULT_SCENE_ENVIRONMENT;
+}
+void SetCameraBackgroundColor(entt::registry& registry, entt::entity cam_entity, const glm::vec4& color) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraBackgroundColor failed!");
+    auto& cam = registry.get<CameraComponent>(cam_entity);
+    cam.bg_mode = CameraBackgroundMode::OVERRIDE_SOLID_COLOR;
+    cam.bg_override_clear_color = color;
+}
+void SetCameraBackgroundFlatTexture(entt::registry& registry, entt::entity cam_entity, rrl::AssetID texture_asset) {
+    RRL_ASSERT(registry.ctx().contains<CameraCache>(), "CameraManager not initialized!");
+    RRL_ASSERT_HAS_COMPONENT(registry, cam_entity, CameraComponent, "SetCameraBackgroundFlatTexture failed!");
+    auto& cam = registry.get<CameraComponent>(cam_entity);
+    cam.bg_mode = CameraBackgroundMode::OVERRIDE_FLAT_TEXTURE;
+    cam.bg_override_texture = texture_asset;
+}
+
+
+
+} // namespace rrl::camera

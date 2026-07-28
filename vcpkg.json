@@ -1,0 +1,8 @@
+{
+  "dependencies": [
+    "fmt",
+    "boost",
+    "glfw3",
+    "opencv4"
+  ]
+}
