@@ -63,6 +63,7 @@ TEST_F(CameraModuleTest, PrimaryCameraManagement) {
 
     EXPECT_EQ(engine->camera.GetPrimaryCamera(), cam1);
 
+
     // Switch primary to cam2
     engine->camera.SetPrimaryCamera(cam2);
 
