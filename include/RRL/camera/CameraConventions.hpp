@@ -53,6 +53,7 @@ enum class CameraViewBasis {
 
 
 
+
 // TODO: This will be defined inside each RHI !!!
 constexpr NDCConvention NDC_OPENGL = { NDCDepth::MINUS_ONE_TO_ONE, NDCYDirection::UP };
 constexpr NDCConvention NDC_WEBGPU = { NDCDepth::ZERO_TO_ONE,      NDCYDirection::UP };
