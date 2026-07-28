@@ -458,7 +458,6 @@ int main() {
         if(camera_target_idx >= camera_targets.size()) camera_target_idx = 0;
         */
 
-
         engine.rhi.RenderFrame();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
